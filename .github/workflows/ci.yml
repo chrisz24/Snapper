@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Package.swift declares `platforms: [.macOS(.v26)]` and swift-tools-version 6.3, so this needs
+    # a runner image carrying the macOS 26 SDK. If this label is not available to your account yet,
+    # change it to the newest macos-* image that has it — the "toolchain" step below prints what the
+    # runner actually has, which is the fastest way to tell.
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: toolchain
+        run: |
+          swift --version
+          xcodebuild -version || true
+          xcodebuild -showsdks | grep -i macos || true
+
+      - name: build
+        run: swift build -c release --product Snapper
+
+      # 99 tests in a plain executable: Command Line Tools ship neither XCTest nor swift-testing,
+      # so the suite is its own product with a small built-in harness.
+      - name: test
+        run: swift run -c debug SnapperTests
+
+      # Proves the bundle assembles and signs. Ad-hoc here on purpose — the Developer ID key stays
+      # on the maintainer's machine and is never uploaded to CI, so releases are cut locally with
+      # `make release`.
+      - name: bundle and sign ad-hoc
+        run: make app CODESIGN_IDENTITY=-
+
+      - name: verify the bundle
+        run: |
+          plutil -lint dist/Snapper.app/Contents/Info.plist
+          codesign --verify --strict --verbose=2 dist/Snapper.app
+
+      # Exercises the real OCR pipeline; needs no permissions and no display.
+      - name: text recognition self-test
+        run: dist/Snapper.app/Contents/MacOS/Snapper --ocr-test

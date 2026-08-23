@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>__NAME__</string>
+	<key>CFBundleIdentifier</key>
+	<string>__BUNDLE_ID__</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>__NAME__</string>
+	<key>CFBundleDisplayName</key>
+	<string>__NAME__</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<!-- Menu bar only: no Dock icon, no main window. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>__NAME__</string>
+	<!-- The default save location is ~/Desktop, and users can pick Documents or Downloads,
+	     each of which is TCC-protected and prompts on first write. -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>__NAME__ saves your screenshots to the Desktop.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>__NAME__ saves screenshots to the folder you choose.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>__NAME__ saves screenshots to the folder you choose.</string>
+</dict>
+</plist>
