@@ -15,3 +15,6 @@ dist/
 
 # Superseded copy of the signing script, kept locally only
 *.bak
+
+# App Store Connect API keys — the whole credential in plain text
+*.p8

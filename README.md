@@ -65,7 +65,7 @@ Two one-time setups, both needing a paid Apple Developer Program membership:
 
 ```bash
 make developer-id     # generate a key + CSR, upload it to Apple, import the certificate
-make notary-setup     # store the Apple ID / Team ID / app-specific password notarytool needs
+make notary-setup     # store the credentials notarytool authenticates with
 ```
 
 `make developer-id` exists because Xcode normally handles the key-and-CSR dance and there is no
@@ -73,6 +73,18 @@ Xcode here. It generates the key locally — Apple only ever sees the signing re
 exact portal steps, and imports the issued certificate into its own keychain
 (`snapper-distribution.keychain`), kept separate from the self-signed one so `make cert-remove`
 cannot take the distribution key with it.
+
+`make notary-setup` offers two ways to authenticate. An **App Store Connect API key** — a `.p8`
+file, a Key ID and an Issuer ID — involves no password at all, is revocable on its own, and is the
+only option that works unattended; that is the one to pick. An **app-specific password** against
+your Apple ID is the fallback if you have not made an API key before. Either way the secret goes
+straight into `notarytool store-credentials`, which keeps it in the login keychain: nothing lands in
+this repo, and nothing is passed on a command line where `ps` would show it.
+
+Certificate issuance is deliberately *not* automated through the App Store Connect API even though
+an endpoint exists for it. `POST /v1/certificates` has been returning `FORBIDDEN_ERROR` since around
+January 2026, and the API rejects `DEVELOPER_ID_APPLICATION_G2` — the type Apple's own portal now
+forces you to choose. Uploading a CSR by hand is the path that works.
 
 Once both are done, the Makefile picks the Developer ID up automatically and signs with the
 hardened runtime and a secure timestamp, which notarization requires.
