@@ -49,13 +49,23 @@ else
   exit 1
 fi
 
-if grep -q "flags=.*runtime" <<<"$SIGNING_INFO"; then
-  ok "hardened runtime enabled"
-else
-  bad "the hardened runtime is not enabled — Apple requires it"
-  echo "  Re-sign with:  codesign --force --options runtime --timestamp --sign \"Developer ID Application: ...\""
-  exit 1
-fi
+# The hardened runtime is a property of executable code, so it is required for an .app and
+# meaningless for a disk image or installer package — those are containers. Demanding it everywhere
+# made notarizing a DMG impossible, since `codesign` will not set the flag on one.
+case "$TARGET" in
+  *.app)
+    if grep -q "flags=.*runtime" <<<"$SIGNING_INFO"; then
+      ok "hardened runtime enabled"
+    else
+      bad "the hardened runtime is not enabled — Apple requires it for an app"
+      echo "  Re-sign with:  codesign --force --options runtime --timestamp --sign \"Developer ID Application: ...\""
+      exit 1
+    fi
+    ;;
+  *)
+    ok "container — hardened runtime does not apply (the app inside carries it)"
+    ;;
+esac
 
 if grep -q "Timestamp=" <<<"$SIGNING_INFO"; then
   ok "signed with a secure timestamp"
@@ -64,11 +74,15 @@ else
   exit 1
 fi
 
-if codesign -d --entitlements - "$TARGET" 2>/dev/null | grep -q "get-task-allow"; then
-  bad "the com.apple.security.get-task-allow entitlement is present — Apple rejects that"
-  exit 1
-fi
-ok "no debug entitlement"
+case "$TARGET" in
+  *.app)
+    if codesign -d --entitlements - "$TARGET" 2>/dev/null | grep -q "get-task-allow"; then
+      bad "the com.apple.security.get-task-allow entitlement is present — Apple rejects that"
+      exit 1
+    fi
+    ok "no debug entitlement"
+    ;;
+esac
 
 codesign --verify --deep --strict "$TARGET" 2>/dev/null \
   && ok "signature verifies" \
