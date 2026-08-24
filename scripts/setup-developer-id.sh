@@ -117,7 +117,9 @@ import() {
   local cer="${1:-}"
   [ -n "$cer" ] || die "Usage: $0 import <path to the .cer Apple issued>"
   [ -f "$cer" ] || die "No such file: $cer"
-  [ -f "$KEYFILE" ] || die "No private key at $KEYFILE — run '$0 request' first."
+  # The key is checked *after* the certificate's kind is read, further down: which key has to match
+  # depends on which kind this is, and checking here would test whichever kind happened to be the
+  # default.
 
   WORK="$(mktemp -d)"; chmod 700 "$WORK"
 
@@ -140,6 +142,7 @@ import() {
        [[ "$reply" =~ ^[Yy]$ ]] || die "Stopped." ;;
   esac
   echo "  kind: Developer ID $KIND"
+  [ -f "$KEYFILE" ] || die "No private key at $KEYFILE — run '$0 request $KIND' first."
 
   # Fail early rather than after importing: a key/certificate mismatch is the usual outcome of
   # re-running 'request' between downloading and importing.
@@ -188,7 +191,11 @@ import() {
 
   echo
   bold "==> identities now available"
-  security find-identity -v -p codesigning "$KEYCHAIN" | sed 's/^/  /'
+  # An installer certificate is not a *code-signing* identity, so -p codesigning does not list it.
+  # Querying both policies is the only way to show what was actually imported.
+  security find-identity -v -p codesigning "$KEYCHAIN" 2>/dev/null | sed -n 's/^ *[0-9]) /  /p'
+  security find-identity -v -p basic "$KEYCHAIN" 2>/dev/null \
+    | grep -i "Developer ID Installer" | sed -n 's/^ *[0-9]) /  /p'
 
   local team
   team="$(security find-identity -v -p codesigning "$KEYCHAIN" \
@@ -197,13 +204,17 @@ import() {
   if [ -n "$team" ]; then
     bold "Your Team ID is $team — you will need it in the next step."
   fi
-  cat <<NEXT
-
-Next:
-  ./scripts/setup-notarization.sh     # store the credentials notarytool needs
-  make notarize                      # build, sign, notarize, staple
-
-NEXT
+  echo
+  if xcrun notarytool history --keychain-profile "${SNAPPER_NOTARY_PROFILE:-snapper-notary}" >/dev/null 2>&1; then
+    echo "Notarization credentials are already stored. Next:"
+    echo "  make pkg          # build a signed installer"
+    echo "  make release      # test, notarize, package, publish"
+  else
+    echo "Next:"
+    echo "  make notary-setup # store the credentials notarytool needs"
+    echo "  make release      # test, notarize, package, publish"
+  fi
+  echo
 }
 
 # Without Apple's intermediate certificate, codesign cannot build a chain to a trusted root and

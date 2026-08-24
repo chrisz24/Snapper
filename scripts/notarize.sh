@@ -35,58 +35,95 @@ xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
 
 bold "==> checking the signature before submitting"
 # Apple rejects submissions for reasons that are all visible locally, and a round trip takes
-# minutes. Every one of these is a rejection if it fails.
-SIGNING_INFO="$(codesign -dvvv "$TARGET" 2>&1 || true)"
-
-if grep -q "Authority=Developer ID Application" <<<"$SIGNING_INFO"; then
-  ok "$(grep -m1 'Authority=Developer ID Application' <<<"$SIGNING_INFO" | sed 's/Authority=//')"
-else
-  bad "not signed with a Developer ID Application certificate"
-  echo
-  echo "  Apple only notarizes code signed with a Developer ID. An ad-hoc or self-signed"
-  echo "  signature cannot be notarized. Set one up with:"
-  echo "      ./scripts/setup-developer-id.sh request"
-  exit 1
-fi
-
-# The hardened runtime is a property of executable code, so it is required for an .app and
-# meaningless for a disk image or installer package — those are containers. Demanding it everywhere
-# made notarizing a DMG impossible, since `codesign` will not set the flag on one.
+# minutes. Every check below is a rejection if it fails.
+#
+# The three target types are signed by *different* mechanisms and have to be inspected differently:
+#
+#   .app   codesign, with "Developer ID Application" + hardened runtime + timestamp
+#   .dmg   codesign, with "Developer ID Application" + timestamp (no runtime — it is not code)
+#   .pkg   productbuild/productsign, with "Developer ID Installer" — codesign cannot read it at all
+#
+# Treating .dmg and .pkg as one "container" case is wrong and was the bug that made a signed
+# package look unsigned.
 case "$TARGET" in
-  *.app)
-    if grep -q "flags=.*runtime" <<<"$SIGNING_INFO"; then
-      ok "hardened runtime enabled"
+  *.pkg)
+    PKG_INFO="$(pkgutil --check-signature "$TARGET" 2>&1 || true)"
+
+    if grep -q "Developer ID Installer" <<<"$PKG_INFO"; then
+      ok "$(grep -m1 "Developer ID Installer" <<<"$PKG_INFO" | sed 's/^ *[0-9]*\. *//')"
     else
-      bad "the hardened runtime is not enabled — Apple requires it for an app"
-      echo "  Re-sign with:  codesign --force --options runtime --timestamp --sign \"Developer ID Application: ...\""
+      bad "not signed with a Developer ID Installer certificate"
+      echo
+      echo "  A package is signed with a \"Developer ID Installer\" certificate, which is a"
+      echo "  different type from the \"Developer ID Application\" one that signs the app."
+      echo "  Set one up with:"
+      echo "      make installer-id"
       exit 1
     fi
+
+    if grep -q "trusted timestamp" <<<"$PKG_INFO"; then
+      ok "signed with a secure timestamp"
+    else
+      bad "no secure timestamp — Apple requires one (pass --timestamp to productbuild)"
+      exit 1
+    fi
+
+    # Proves the archive is well-formed and its payload readable; a truncated upload is otherwise
+    # only discovered by Apple.
+    pkgutil --payload-files "$TARGET" >/dev/null 2>&1 \
+      && ok "package archive is readable" \
+      || die "pkgutil could not read the payload; rebuild the package."
     ;;
+
   *)
-    ok "container — hardened runtime does not apply (the app inside carries it)"
-    ;;
-esac
+    SIGNING_INFO="$(codesign -dvvv "$TARGET" 2>&1 || true)"
 
-if grep -q "Timestamp=" <<<"$SIGNING_INFO"; then
-  ok "signed with a secure timestamp"
-else
-  bad "no secure timestamp — Apple requires one (pass --timestamp to codesign)"
-  exit 1
-fi
-
-case "$TARGET" in
-  *.app)
-    if codesign -d --entitlements - "$TARGET" 2>/dev/null | grep -q "get-task-allow"; then
-      bad "the com.apple.security.get-task-allow entitlement is present — Apple rejects that"
+    if grep -q "Authority=Developer ID Application" <<<"$SIGNING_INFO"; then
+      ok "$(grep -m1 'Authority=Developer ID Application' <<<"$SIGNING_INFO" | sed 's/Authority=//')"
+    else
+      bad "not signed with a Developer ID Application certificate"
+      echo
+      echo "  Apple only notarizes code signed with a Developer ID. An ad-hoc or self-signed"
+      echo "  signature cannot be notarized. Set one up with:"
+      echo "      make developer-id"
       exit 1
     fi
-    ok "no debug entitlement"
+
+    # The hardened runtime is a property of executable code, so it is required for an .app and
+    # meaningless for a disk image.
+    case "$TARGET" in
+      *.app)
+        if grep -q "flags=.*runtime" <<<"$SIGNING_INFO"; then
+          ok "hardened runtime enabled"
+        else
+          bad "the hardened runtime is not enabled — Apple requires it for an app"
+          echo "  Re-sign with:  codesign --force --options runtime --timestamp --sign \"Developer ID Application: ...\""
+          exit 1
+        fi
+
+        if codesign -d --entitlements - "$TARGET" 2>/dev/null | grep -q "get-task-allow"; then
+          bad "the com.apple.security.get-task-allow entitlement is present — Apple rejects that"
+          exit 1
+        fi
+        ok "no debug entitlement"
+        ;;
+      *)
+        ok "container — hardened runtime does not apply (the app inside carries it)"
+        ;;
+    esac
+
+    if grep -q "Timestamp=" <<<"$SIGNING_INFO"; then
+      ok "signed with a secure timestamp"
+    else
+      bad "no secure timestamp — Apple requires one (pass --timestamp to codesign)"
+      exit 1
+    fi
+
+    codesign --verify --deep --strict "$TARGET" 2>/dev/null \
+      && ok "signature verifies" \
+      || die "codesign --verify failed; fix the signature before submitting."
     ;;
 esac
-
-codesign --verify --deep --strict "$TARGET" 2>/dev/null \
-  && ok "signature verifies" \
-  || die "codesign --verify failed; fix the signature before submitting."
 
 # ---------------------------------------------------------------- submit
 
