@@ -7,13 +7,13 @@
 // them in an interface but forbids them in an app icon, and `camera.viewfinder` — which the menu
 // bar item does use — would be exactly that.
 //
-// The motif is what distinguishes Snapper from macOS's own screenshot tool: a capture frame
-// (the four corner marks everyone reads as "select a region") wrapped around lines of text
-// (recognition). At 16pt the text lines merge into a block and the frame still reads.
+// The motif is the thing Snapper does that macOS's own screenshot tool does not: a captured image,
+// behind, and the words taken out of it, in front. Two distinct objects rather than one, because a
+// single card with a picture and some lines in it reads as a document or an article — which is what
+// the app is *not*.
 
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 
 // MARK: - Geometry
 //
@@ -26,43 +26,75 @@ private let plateInset: CGFloat = 100
 private let plateSide = canvas - plateInset * 2      // 824
 private let plateRadius: CGFloat = 185.4             // Apple's continuous-corner radius at 824pt
 
-private let frameSide: CGFloat = 496                 // capture frame
-private let armLength: CGFloat = 132                 // length of each corner arm
-private let frameStroke: CGFloat = 36
+private let cardWidth: CGFloat = 340
+private let cardHeight: CGFloat = 268
+private let cardRadius: CGFloat = 42
 
-private let barHeight: CGFloat = 48
-private let barSpacing: CGFloat = 40
-private let barWidths: [CGFloat] = [400, 312, 224]   // ragged, the way real text sets
-private let textBlockWidth: CGFloat = 400            // ~48pt clear inside each frame edge
+// Card placement. The overlap is set so the whole photo mark stays unoccluded: the front card's
+// leading edges land at local x>52, y>66 in the back card's own coordinates, and the mark at
+// scale 0.6 spans x[-78,88] y[-53,58] — clear of the corner where those two constraints meet.
+// Tightening the overlap past this clips the hill into a meaningless wedge.
+private let backCardOffset = CGSize(width: -118, height: -104)
+private let frontCardOffset = CGSize(width: 104, height: 96)
+private let photoMarkScale: CGFloat = 0.60
 
-/// The four corner marks. Drawn as arms rather than a closed rectangle because an unbroken box
-/// reads as a window or a photo frame; the gaps are what make it read as *selecting*.
-private struct CaptureFrame: Shape {
+/// Ink for text on the white card — the darker end of the plate gradient, so it reads as the same
+/// family rather than an unrelated blue.
+private let ink = Color(red: 0.07, green: 0.32, blue: 0.85)
+
+/// The hill half of the photo mark.
+///
+/// A `Shape` rather than a bare `Path` for one reason that cost real time: a `Path` built from
+/// literal coordinates is laid out from the view's *top-left origin*, while `Circle().offset()`
+/// moves relative to the view's *centre*. Mixing the two put the sun in the middle of the card and
+/// the hill off the top-left corner, where clipping ate it — which looked like a clipping problem
+/// and was actually a coordinate-space one. Resolving against `rect.mid` centres it honestly.
+private struct Hill: Shape {
+    var scale: CGFloat
     func path(in rect: CGRect) -> Path {
-        let box = CGRect(
-            x: rect.midX - frameSide / 2,
-            y: rect.midY - frameSide / 2,
-            width: frameSide,
-            height: frameSide
-        )
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.midX + x * scale, y: rect.midY + y * scale)
+        }
         var path = Path()
-        // Top-left
-        path.move(to: CGPoint(x: box.minX, y: box.minY + armLength))
-        path.addLine(to: CGPoint(x: box.minX, y: box.minY))
-        path.addLine(to: CGPoint(x: box.minX + armLength, y: box.minY))
-        // Top-right
-        path.move(to: CGPoint(x: box.maxX - armLength, y: box.minY))
-        path.addLine(to: CGPoint(x: box.maxX, y: box.minY))
-        path.addLine(to: CGPoint(x: box.maxX, y: box.minY + armLength))
-        // Bottom-right
-        path.move(to: CGPoint(x: box.maxX, y: box.maxY - armLength))
-        path.addLine(to: CGPoint(x: box.maxX, y: box.maxY))
-        path.addLine(to: CGPoint(x: box.maxX - armLength, y: box.maxY))
-        // Bottom-left
-        path.move(to: CGPoint(x: box.minX + armLength, y: box.maxY))
-        path.addLine(to: CGPoint(x: box.minX, y: box.maxY))
-        path.addLine(to: CGPoint(x: box.minX, y: box.maxY - armLength))
+        path.move(to: point(-130, 86))
+        path.addLine(to: point(-16, -18))
+        path.addLine(to: point(62, 52))
+        path.addLine(to: point(108, 10))
+        path.addLine(to: point(140, 86))
+        path.closeSubpath()
         return path
+    }
+}
+
+/// The universal "this is a picture" mark: a sun and a hill.
+private struct PhotoMark: View {
+    var scale: CGFloat = photoMarkScale
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.white)
+                .frame(width: 54 * scale, height: 54 * scale)
+                .offset(x: -96 * scale, y: -62 * scale)
+            Hill(scale: scale)
+                .fill(.white)
+                .offset(x: 6 * scale, y: 10 * scale)
+        }
+    }
+}
+
+private struct TextLines: View {
+    var body: some View {
+        // Ragged widths, the way real text sets. Flush left — the alignment on VStack is what does
+        // it, not the frame's: a VStack centres its children regardless of the frame around it, and
+        // centred ragged bars read as decoration rather than as a paragraph.
+        VStack(alignment: .leading, spacing: 24) {
+            ForEach([212, 166, 114] as [CGFloat], id: \.self) { width in
+                Capsule(style: .continuous)
+                    .fill(ink)
+                    .frame(width: width, height: 34)
+            }
+        }
+        .frame(width: 212, alignment: .leading)
     }
 }
 
@@ -96,28 +128,45 @@ private struct IconArt: View {
                 )
                 .frame(width: plateSide, height: plateSide)
 
-            // Recognized text, sitting inside the frame.
-            //
-            // The alignment on VStack is what matters, not the frame's: a VStack centres its
-            // children regardless of how the frame around it is aligned, and centred ragged bars
-            // read as decoration. Flush left is what makes them read as a paragraph of text.
-            VStack(alignment: .leading, spacing: barSpacing) {
-                ForEach(Array(barWidths.enumerated()), id: \.offset) { _, width in
-                    Capsule(style: .continuous)
-                        .fill(.white)
-                        .frame(width: width, height: barHeight)
-                }
+            // The captured image. Translucent with a bright rim so it reads as glass sitting on the
+            // plate — present, but clearly behind the result.
+            ZStack {
+                RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                    .fill(.white.opacity(0.34))
+                PhotoMark()
             }
-            .frame(width: textBlockWidth, alignment: .leading)
+            .frame(width: cardWidth, height: cardHeight)
+            // Clipped before the rim is drawn: without this the hill escapes the card, and at some
+            // offsets it escapes the plate entirely.
+            .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                    .strokeBorder(.white.opacity(0.95), lineWidth: 17)
+            )
+            .rotationEffect(.degrees(-8))
+            .offset(x: backCardOffset.width, y: backCardOffset.height)
 
-            CaptureFrame()
-                .stroke(.white, style: StrokeStyle(lineWidth: frameStroke, lineCap: .round))
+            // The words that came out of it. Opaque, square to the grid, in front — the result, not
+            // the source.
+            ZStack {
+                RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                    .fill(.white)
+                TextLines()
+            }
+            .frame(width: cardWidth, height: cardHeight)
+            .offset(x: frontCardOffset.width, y: frontCardOffset.height)
         }
         .frame(width: canvas, height: canvas)
     }
 }
 
 // MARK: - Rendering
+
+struct Failure: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var errorDescription: String? { message }
+}
 
 /// Every size is rendered from the vector art rather than downsampled from one big PNG, so the
 /// 16pt icon is as crisp as the 1024pt one.
@@ -136,12 +185,6 @@ func renderPNG(side: CGFloat, to url: URL) throws {
         throw Failure("could not encode PNG at \(Int(side))pt")
     }
     try data.write(to: url)
-}
-
-struct Failure: LocalizedError {
-    let message: String
-    init(_ message: String) { self.message = message }
-    var errorDescription: String? { message }
 }
 
 // The set macOS expects in an .icns. Each logical size needs both its 1x and 2x pixel size.
