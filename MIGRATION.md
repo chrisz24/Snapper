@@ -26,7 +26,8 @@ make install
 ```
 
 Without it the build signs ad-hoc, and macOS re-asks for Screen Recording permission after every
-single rebuild. See the "Keeping the permission across rebuilds" section of README.md for why.
+single rebuild. See "Keeping Screen Recording permission across rebuilds" in [BUILDING.md](BUILDING.md)
+for why.
 
 ## 4. Grant Screen Recording
 
@@ -63,7 +64,7 @@ make developer-id     # Apple-issued signing certificate (needs a paid membershi
 make notary-setup     # credentials for notarytool
 ```
 
-See the "Releasing" section of README.md. Without them `make app` still works — it just produces a
+See "Releasing" in [BUILDING.md](BUILDING.md). Without them `make app` still works — it just produces a
 build only this Mac will open.
 
 ## What was left behind on purpose
