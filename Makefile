@@ -51,7 +51,8 @@ endif
 INSTALL_DIR ?= $(HOME)/Applications
 
 .PHONY: all build bundle sign app run install test clean uninstall reset-permissions \
-        cert cert-remove developer-id installer-id notary-setup pkg zip notarize verify release identity icon
+        cert cert-remove developer-id installer-id notary-setup pkg zip notarize verify release identity icon \
+        reset-settings
 
 all: app
 
@@ -162,6 +163,24 @@ cert-remove:
 	-@security delete-keychain $(SIGN_KEYCHAIN) 2>/dev/null || true
 	-@rm -f "$(KEYCHAIN_PW)"
 	@echo "removed the local signing identity; builds fall back to ad-hoc"
+
+# Clears the app's stored settings, so the next launch behaves like a genuine first run — the setup
+# window included.
+#
+# Worth knowing why this is needed at all: UserDefaults live in ~/Library/Preferences keyed by bundle
+# id and owned by the user, not inside the .app. Uninstalling and reinstalling does not touch them,
+# so `hasCompletedSetup` survives and the setup window never reappears.
+reset-settings:
+	-@pkill -x $(NAME) 2>/dev/null || true
+	@sleep 1
+	@if [ -f "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist" ]; then \
+		cp "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist" "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist.bak"; \
+		echo "backed up → ~/Library/Preferences/$(BUNDLE_ID).plist.bak"; \
+	fi
+	-@defaults delete $(BUNDLE_ID) 2>/dev/null || true
+	@# cfprefsd caches preferences in memory and will write the old values back out from under you.
+	-@killall -u "$$(id -un)" cfprefsd 2>/dev/null || true
+	@echo "cleared settings for $(BUNDLE_ID) — the next launch runs setup from scratch"
 
 # Clears this app's TCC entries so the permission prompt appears again from scratch.
 reset-permissions:

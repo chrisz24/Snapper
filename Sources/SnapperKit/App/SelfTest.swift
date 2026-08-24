@@ -39,6 +39,19 @@ public enum SelfTest {
         let sandbox = AppInfo.supportDirectory.appendingPathComponent("SelfTest", isDirectory: true)
         try? FileManager.default.removeItem(at: sandbox)
         try? FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        // These are the user's real, persisted settings — SettingsStore.shared is UserDefaults-backed
+        // — so they have to go back exactly as they were. Without this, running a diagnostic leaves
+        // the app permanently saving captures into the self-test sandbox with the shutter muted, and
+        // nothing says so.
+        let previousSaveDirectory = settings.saveDirectoryPath
+        let previousAutoSave = settings.autoSaveToDisk
+        let previousShutter = settings.playCaptureSound
+        defer {
+            settings.saveDirectoryPath = previousSaveDirectory
+            settings.autoSaveToDisk = previousAutoSave
+            settings.playCaptureSound = previousShutter
+        }
+
         settings.saveDirectoryPath = sandbox.path
         settings.autoSaveToDisk = true
         settings.playCaptureSound = false
