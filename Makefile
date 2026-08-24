@@ -106,6 +106,16 @@ install: app
 	@rm -rf "$(INSTALL_DIR)/$(NAME).app"
 	@cp -R "$(APP)" "$(INSTALL_DIR)/"
 	@echo "installed → $(INSTALL_DIR)/$(NAME).app"
+	@# This target rebuilds, which re-signs with a fresh build number and so discards any
+	@# notarization ticket. That is fine for a local install — a bundle built here carries no
+	@# quarantine attribute, so Gatekeeper never gates the launch — but `make notarize && make
+	@# install` would otherwise leave an unnotarized build behind with nothing to say so.
+	@if ! xcrun stapler validate "$(INSTALL_DIR)/$(NAME).app" >/dev/null 2>&1; then \
+		echo "  note: this build is not notarized — fine locally, not what you would distribute."; \
+		echo "        for a build to hand to someone else: make notarize (or make release)"; \
+	else \
+		echo "  notarization ticket is stapled"; \
+	fi
 
 test:
 	@swift run -c debug SnapperTests
