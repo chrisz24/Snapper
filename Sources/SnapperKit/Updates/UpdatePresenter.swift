@@ -7,9 +7,12 @@ public enum UpdatePresenter {
 
     /// A newer release exists.
     ///
-    /// "Download" opens the disk image in the browser rather than fetching it in-process. A menu
-    /// bar app cannot replace its own bundle while running, so the honest thing is to hand the
-    /// download to the browser and let the normal drag-to-Applications flow happen.
+    /// "Install" downloads the package, verifies it, and hands it to macOS's Installer. Snapper
+    /// cannot replace its own bundle directly: a package installs to /Applications, which is owned
+    /// by root, so the privileged step has to be done by Installer with the user's consent. What
+    /// this flow removes is the trip to a browser and the manual download, not the password prompt.
+    ///
+    /// A release with no `.pkg` attached falls back to opening the download in a browser.
     public static func presentAvailable(
         _ release: GitHubRelease,
         current: AppVersion,
@@ -33,8 +36,9 @@ public enum UpdatePresenter {
             alert.accessoryView = notesView(release.notes)
         }
 
-        alert.addButton(withTitle: "Download")        // .alertFirstButtonReturn
-        alert.addButton(withTitle: "Later")           // .alertSecondButtonReturn
+        let canInstall = release.asset?.name.lowercased().hasSuffix(".pkg") == true
+        alert.addButton(withTitle: canInstall ? "Install" : "Download")  // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Later")                              // .alertSecondButtonReturn
         alert.addButton(withTitle: "Skip This Version")
         // Esc should mean "not now", not "never mention this again".
         alert.buttons[1].keyEquivalent = "\u{1b}"
@@ -42,11 +46,100 @@ public enum UpdatePresenter {
 
         switch runModal(alert) {
         case .alertFirstButtonReturn:
-            NSWorkspace.shared.open(release.downloadURL)
+            if canInstall {
+                install(release)
+            } else {
+                NSWorkspace.shared.open(release.downloadURL)
+            }
         case .alertThirdButtonReturn:
             onSkip()
         default:
             break
+        }
+    }
+
+    /// Kept alive for the duration of a download; nothing else owns them.
+    private static var installer: UpdateInstaller?
+    private static var progressWindow: UpdateProgressWindow?
+
+    private static func install(_ release: GitHubRelease) {
+        guard installer == nil else { return }
+
+        let installer = UpdateInstaller()
+        let window = UpdateProgressWindow()
+        Self.installer = installer
+        Self.progressWindow = window
+
+        window.show(title: "Downloading \(AppInfo.name) \(release.version.displayString)")
+        window.onCancel = { installer.cancel() }
+
+        // Polling the published value rather than observing it: this file deliberately has no
+        // Combine or SwiftUI in it, and the panel only needs to move a few times a second.
+        let ticker = Task { @MainActor in
+            while !Task.isCancelled {
+                if let progress = installer.progress { window.update(progress) }
+                try? await Task.sleep(for: .milliseconds(120))
+            }
+        }
+
+        Task { @MainActor in
+            let outcome = await installer.fetch(release)
+            ticker.cancel()
+            window.close()
+            Self.installer = nil
+            Self.progressWindow = nil
+
+            switch outcome {
+            case .success(let package):
+                confirmInstall(package, release: release)
+            case .failure(.cancelled):
+                break
+            case .failure(let error):
+                presentDownloadFailure(error, release: release)
+            }
+        }
+    }
+
+    /// The package is verified by this point. Installer replaces the running app, so Snapper quits
+    /// rather than carrying on as a process whose bundle has been swapped underneath it.
+    private static func confirmInstall(_ package: URL, release: GitHubRelease) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "\(AppInfo.name) \(release.version.displayString) is ready to install"
+        alert.informativeText = """
+            The download is signed by the same developer as this copy and accepted by macOS.
+
+            Installing replaces the running app, so \(AppInfo.name) will quit. macOS will ask for \
+            your password, as it does for any installer.
+            """
+        alert.addButton(withTitle: "Install and Quit")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[1].keyEquivalent = "\u{1b}"
+
+        guard runModal(alert) == .alertFirstButtonReturn else {
+            try? FileManager.default.removeItem(at: package)
+            return
+        }
+
+        NSWorkspace.shared.open(package)
+        // A moment for Installer to take over, so quitting does not race its launch.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            NSApp.terminate(nil)
+        }
+    }
+
+    private static func presentDownloadFailure(_ error: UpdateInstaller.Failure, release: GitHubRelease) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could not install the update"
+        alert.informativeText = (error.errorDescription ?? "Something went wrong.")
+            + "\n\nYou can download it yourself from the release page instead."
+        alert.addButton(withTitle: "Open Release Page")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[1].keyEquivalent = "\u{1b}"
+        if runModal(alert) == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(release.pageURL)
         }
     }
 

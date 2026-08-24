@@ -45,9 +45,20 @@ public enum UpdateSelfTest {
             if let asset = release.asset {
                 let size = asset.sizeLabel
                 check("has a downloadable build", true, size.isEmpty ? asset.name : "\(asset.name), \(size)")
+                if asset.name.lowercased().hasSuffix(".pkg") {
+                    check("installs in place", true, "Install downloads and verifies it, then hands it to Installer")
+                } else {
+                    check("installs in place", false, "not a .pkg — Install falls back to opening a browser")
+                }
             } else {
                 check("has a downloadable build", false,
-                      "no .dmg/.zip/.pkg attached — Download would open the release page instead")
+                      "no .pkg/.dmg/.zip attached — Download would open the release page instead")
+            }
+            if let team = UpdateInstaller.runningTeamIdentifier {
+                check("update will be pinned to team \(team)", true, "a package signed by anyone else is refused")
+            } else {
+                check("team pinning unavailable", false,
+                      "this build is unsigned, so only Apple notarization is checked")
             }
             check("release notes present", !release.notes.isEmpty,
                   release.notes.isEmpty ? "the alert will have no notes panel" : "\(release.notes.count) characters")

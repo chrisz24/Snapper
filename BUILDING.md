@@ -184,9 +184,24 @@ a downgrade to everyone who checked. `UpdateResolver` picks the highest version 
 `AppVersion` does the comparison, because string ordering puts `0.10.0` below `0.9.9` and even a
 numeric string compare mishandles pre-release suffixes.
 
-Download opens the disk image in the browser rather than fetching it in-process: a menu bar app
-cannot replace its own bundle while running, so anything else would be a worse version of dragging
-it to Applications yourself.
+### Installing in place
+
+**Install** downloads the `.pkg` and hands it to macOS's Installer. Snapper cannot do the replacing
+itself: a package installs into `/Applications`, which is owned by `root`, so the privileged step
+belongs to Installer with the user's consent. What the flow removes is the browser trip and the
+manual download, not the password prompt. A release with no `.pkg` attached falls back to opening
+the download in a browser.
+
+The part worth reviewing is `UpdateInstaller.verify`. A downloaded installer is arbitrary code that
+will run with administrator rights, so before anything is opened it must be signed with a Developer
+ID Installer certificate, signed by **the same team that signed the running copy** — read from our
+own signature via `SecCodeCopySigningInformation` rather than hard-coded, so a fork checks against
+its own team — and accepted by `spctl --assess --type install`, which is what proves Apple notarized
+it. Anything failing those is deleted rather than left somewhere it could still be opened by hand.
+
+Team pinning is the check that carries the weight. Accepting any Developer ID would accept a package
+signed by anyone with an Apple developer account. `--update-check` reports which team the running
+build pins to, and says so plainly when a build is unsigned and only notarization can be checked.
 
 The repository the updater queries is set by two constants in
 [`AppInfo.swift`](Sources/SnapperKit/App/AppInfo.swift) — a fork only has to change those.
@@ -197,6 +212,6 @@ The repository the updater queries is set by two constants in
 make test
 ```
 
-100 tests. Command Line Tools ship neither XCTest nor swift-testing, so the suite is an ordinary
+106 tests. Command Line Tools ship neither XCTest nor swift-testing, so the suite is an ordinary
 executable target with a small built-in harness in `Tests/SnapperTests/Harness.swift`. Everything
 under test is public API, so no `@testable` import is needed.

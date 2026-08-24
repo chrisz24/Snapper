@@ -117,8 +117,13 @@ Snapper never rewrites your system shortcut settings on your behalf.
 
 **Menu bar → Check for Updates…** asks whether a newer release has been published, and Snapper also
 checks once a day on its own. Nothing is downloaded or installed on your behalf: if there is an
-update you get its version, size and release notes, and the choice of **Download**, **Later**, or
+update you get its version, size and release notes, and the choice of **Install**, **Later**, or
 **Skip This Version**.
+
+**Install** does it in place — no trip to a browser and no hunting for a downloaded file. Snapper
+fetches the installer, checks it is signed by the same developer as your copy and that macOS accepts
+it, then hands it to the system installer. macOS asks for your password at that point, as it does
+for any installer, because the app lives in `/Applications` and only the system can replace it.
 
 The check sends nothing about you or your machine, and needs no account. **About** in Settings has
 the switches: automatic checks on or off, whether pre-releases count, when it last checked, and a way

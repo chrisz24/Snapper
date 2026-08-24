@@ -293,6 +293,72 @@ enum UpdateTests {
             }
         }
 
+        Harness.suite("Installer verification") {
+            // Real `pkgutil --check-signature` output. The team has to come from the leaf, not from
+            // anywhere else in the chain — Apple's intermediate and root carry no team, and a
+            // looser match would read the wrong line.
+            let signed = """
+            Package "Snapper-0.1.1.pkg":
+               Status: signed by a developer certificate issued by Apple for distribution
+               Signed with a trusted timestamp on: 2026-08-24 20:42:37 +0000
+               Certificate Chain:
+                1. Developer ID Installer: Christos Zikopoulos (6N9UZU4A8S)
+                   Expires: 2031-08-25 19:53:33 +0000
+                   ------------------------------------------------------------------------
+                2. Developer ID Certification Authority
+                   Expires: 2031-09-17 00:00:00 +0000
+                   ------------------------------------------------------------------------
+                3. Apple Root CA
+                   Expires: 2035-02-09 21:40:36 +0000
+            """
+
+            Harness.test("reads the team from the leaf certificate") {
+                Harness.expectEqual(UpdateInstaller.teamIdentifier(inPkgutilOutput: signed), "6N9UZU4A8S")
+            }
+
+            Harness.test("an unsigned package yields no team") {
+                let unsigned = """
+                Package "Snapper-0.1.1.pkg":
+                   Status: no signature
+                """
+                Harness.expect(UpdateInstaller.teamIdentifier(inPkgutilOutput: unsigned) == nil)
+            }
+
+            Harness.test("an Application certificate is not accepted as an Installer one") {
+                // Signing a package with the wrong certificate type must not pass the team check.
+                let wrongKind = """
+                Package "x.pkg":
+                   Certificate Chain:
+                    1. Developer ID Application: Christos Zikopoulos (6N9UZU4A8S)
+                """
+                Harness.expect(UpdateInstaller.teamIdentifier(inPkgutilOutput: wrongKind) == nil)
+            }
+
+            Harness.test("a certificate with no team in it yields nothing") {
+                let noTeam = """
+                Package "x.pkg":
+                   Certificate Chain:
+                    1. Developer ID Installer: Someone
+                """
+                Harness.expect(UpdateInstaller.teamIdentifier(inPkgutilOutput: noTeam) == nil)
+            }
+
+            Harness.test("empty output yields nothing rather than crashing") {
+                Harness.expect(UpdateInstaller.teamIdentifier(inPkgutilOutput: "") == nil)
+            }
+
+            Harness.test("a release with no pkg is not installable in place") {
+                let json = """
+                [{"tag_name":"v9.0.0","name":"n","body":"","html_url":"https://example.invalid/r",
+                  "draft":false,"prerelease":false,"published_at":null,
+                  "assets":[{"name":"Snapper-9.0.0.zip","browser_download_url":"https://example.invalid/z","size":10,"state":"uploaded"}]}]
+                """
+                let decoded = (try? GitHubRelease.decodeFeed(Data(json.utf8))) ?? []
+                let installable = decoded.first?.asset?.name.lowercased().hasSuffix(".pkg") ?? false
+                Harness.expect(!installable, "a zip must fall back to the browser, not be installed")
+            }
+        }
+
         Harness.suite("Update endpoint") {
             Harness.test("points at the configured repository") {
                 Harness.expectEqual(AppInfo.repositoryURL.absoluteString,

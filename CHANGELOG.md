@@ -3,6 +3,13 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## Unreleased
+
+- **Updates install in place.** "Install" downloads the package, checks it is signed by the same
+  developer as your copy and accepted by macOS, then hands it to the system installer — no browser,
+  no manual download. macOS still asks for your password, because the app lives in /Applications and
+  only the system can replace it.
+
 ## 0.1.1
 
 - **Setup no longer skips itself when you quit to grant Screen Recording.** macOS only applies that
