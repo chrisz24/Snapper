@@ -224,6 +224,32 @@ public enum SettingsSelfTest {
             try? await Task.sleep(for: .milliseconds(200))
             check("it does not reappear on the next launch", controller.debugWindow == nil)
 
+            // Quitting mid-setup is a required step, not an answer: a granted Screen Recording
+            // permission only applies to a new launch. Treating the teardown as completion left the
+            // app reopening with setup skipped and the rest of the steps unreachable.
+            let quitSuite = "snapper.selftest.setup.quit.\(UUID().uuidString)"
+            if let quitDefaults = UserDefaults(suiteName: quitSuite) {
+                defer { UserDefaults.standard.removePersistentDomain(forName: quitSuite) }
+                let quitSettings = SettingsStore(defaults: quitDefaults)
+                let quitController = SetupWindowController(
+                    settings: quitSettings,
+                    bindings: HotkeyBindings(defaults: quitDefaults)
+                )
+                quitController.showIfNeeded()
+                try? await Task.sleep(for: .milliseconds(400))
+                check("setup is open before the quit", quitController.debugWindow != nil)
+
+                quitController.simulateTerminationForTesting()
+                quitController.debugWindow?.close()
+                try? await Task.sleep(for: .milliseconds(200))
+                check("quitting mid-setup does NOT mark setup as seen", !quitSettings.hasCompletedSetup)
+
+                quitController.showIfNeeded()
+                try? await Task.sleep(for: .milliseconds(400))
+                check("setup comes back after the relaunch", quitController.debugWindow != nil)
+                quitController.close()
+            }
+
             // The escape hatch for anyone who would rather leave macOS's shortcuts alone.
             let model = SetupModel(settings: freshSettings, bindings: freshBindings)
             model.useAlternativeShortcuts()

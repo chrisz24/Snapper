@@ -75,8 +75,14 @@ struct SetupView: View {
                     Button("Open System Settings") { model.requestScreenRecording() }
                         .buttonStyle(.borderedProminent)
                     Button("Re-check") { model.refresh() }
+                    // A granted permission does not apply to the running process, so "Re-check"
+                    // keeps saying no until the app restarts. Offering the restart here means nobody
+                    // has to work that out, or quit by hand and hope setup comes back.
+                    Button("Quit & Reopen") { model.relaunch() }
                 }
-                Text("Enable Snapper under Privacy & Security → Screen & System Audio Recording, then relaunch.")
+                Text("Enable Snapper under Privacy & Security → Screen & System Audio Recording. "
+                     + "macOS only applies it to a new launch, so use Quit & Reopen afterwards — "
+                     + "setup picks up where it left off.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

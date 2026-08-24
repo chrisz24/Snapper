@@ -19,6 +19,11 @@ public final class SetupWindowController: NSObject, NSWindowDelegate {
         self.settings = settings
         self.bindings = bindings
         super.init()
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.isTerminating = true }
+        }
     }
 
     public var debugWindow: NSWindow? { window }
@@ -54,6 +59,14 @@ public final class SetupWindowController: NSObject, NSWindowDelegate {
         focus(window)
     }
 
+    /// True from the moment the app starts shutting down. Quitting tears the window down, and that
+    /// must not be mistaken for the user having finished.
+    private var isTerminating = false
+    private var terminationObserver: NSObjectProtocol?
+
+    /// Exposed so the behaviour can be exercised without actually quitting the app.
+    public func simulateTerminationForTesting() { isTerminating = true }
+
     public func close() {
         settings.hasCompletedSetup = true
         window?.close()
@@ -72,8 +85,16 @@ public final class SetupWindowController: NSObject, NSWindowDelegate {
     }
 
     public func windowWillClose(_ notification: Notification) {
-        // Closing by any route counts as having seen it; the menu bar can reopen it on demand.
-        settings.hasCompletedSetup = true
+        // Closing by any route counts as having seen it — except being torn down because the app is
+        // quitting, which is not a decision the user made about setup.
+        //
+        // This matters because granting Screen Recording *requires* a relaunch before it takes
+        // effect, so quitting is a step in the middle of setup rather than the end of it. Marking it
+        // complete here meant the app came back with setup silently skipped and the remaining steps
+        // unreachable except from the menu bar.
+        if !isTerminating {
+            settings.hasCompletedSetup = true
+        }
         window = nil
         NSApp.setActivationPolicy(.accessory)
         onFinish?()
@@ -90,6 +111,13 @@ final class SetupModel: ObservableObject {
     var onClose: (() -> Void)?
 
     private var activationObserver: NSObjectProtocol?
+
+    /// Quits and reopens. macOS only applies a freshly granted Screen Recording permission to a new
+    /// launch, so this is a required step in the middle of setup, not a convenience.
+    func relaunch() {
+        PermissionsChecker.relaunch()
+    }
+
     /// Forces the blocked state, so the interface for it can be inspected on a Mac where the
     /// system shortcuts happen to be switched off.
     private let forcedBlocked: [(GlobalAction, String)]?
