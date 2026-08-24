@@ -511,10 +511,13 @@ private struct AboutPane: View {
         Form {
             Section {
                 HStack(spacing: 14) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.tint)
-                        .frame(width: 52)
+                    // The bundle's own icon, which is what an About box is expected to show. Read
+                    // from NSApp rather than by name so it still resolves outside a built bundle,
+                    // where AppKit substitutes the generic application icon.
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(AppInfo.name).font(.title2.weight(.semibold))
                         Text("Version \(AppInfo.version) (\(AppInfo.build))")

@@ -1,3 +1,5 @@
+<img src="Resources/AppIcon.png" width="116" align="right" alt="">
+
 # Snapper
 
 A menu bar screenshot utility for macOS that keeps the familiar capture-and-preview behaviour and

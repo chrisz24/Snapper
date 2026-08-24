@@ -51,7 +51,7 @@ endif
 INSTALL_DIR ?= $(HOME)/Applications
 
 .PHONY: all build bundle sign app run install test clean uninstall reset-permissions \
-        cert cert-remove developer-id notary-setup dmg zip notarize verify release identity
+        cert cert-remove developer-id notary-setup dmg zip notarize verify release identity icon
 
 all: app
 
@@ -131,6 +131,13 @@ identity:
 	@security find-identity -v -p codesigning 2>/dev/null | sed 's/^/  /'
 	@echo "every identity codesign can use, self-signed included:"
 	@security find-identity -p codesigning $(SIGN_KEYCHAIN) 2>/dev/null | sed -n 's/^ *[0-9]) /  /p'
+
+# Regenerates the app icon from scripts/make-icon.swift. The .icns is committed, so this only
+# needs running when the artwork changes.
+icon:
+	@swift scripts/make-icon.swift
+	@iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
+	@echo "wrote Resources/AppIcon.icns"
 
 # Creates the local signing identity that keeps Screen Recording permission stable across rebuilds.
 cert:
