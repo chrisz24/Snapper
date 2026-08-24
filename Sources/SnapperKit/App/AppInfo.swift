@@ -8,7 +8,7 @@ public enum AppInfo {
 
     /// Where releases are published, and therefore where the updater looks. A fork only has to
     /// change these two lines.
-    public static let repositoryOwner = "chrisziko"
+    public static let repositoryOwner = "chrisz24"
     public static let repositoryName = "Snapper"
 
     public static var version: String {

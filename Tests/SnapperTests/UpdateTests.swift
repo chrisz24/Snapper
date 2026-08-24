@@ -12,7 +12,7 @@ enum UpdateTests {
         "tag_name": "v0.9.0",
         "name": "Snapper 0.9.0",
         "body": "Newest by date, lowest by number.",
-        "html_url": "https://github.com/chrisziko/Snapper/releases/tag/v0.9.0",
+        "html_url": "https://github.com/chrisz24/Snapper/releases/tag/v0.9.0",
         "draft": false,
         "prerelease": false,
         "published_at": "2026-08-20T10:00:00Z",
@@ -24,7 +24,7 @@ enum UpdateTests {
         "tag_name": "v1.2.0",
         "name": "Snapper 1.2.0",
         "body": "Real latest.",
-        "html_url": "https://github.com/chrisziko/Snapper/releases/tag/v1.2.0",
+        "html_url": "https://github.com/chrisz24/Snapper/releases/tag/v1.2.0",
         "draft": false,
         "prerelease": false,
         "published_at": "2026-08-01T10:00:00Z",
@@ -38,7 +38,7 @@ enum UpdateTests {
         "tag_name": "v1.3.0-beta.1",
         "name": "",
         "body": "",
-        "html_url": "https://github.com/chrisziko/Snapper/releases/tag/v1.3.0-beta.1",
+        "html_url": "https://github.com/chrisz24/Snapper/releases/tag/v1.3.0-beta.1",
         "draft": false,
         "prerelease": true,
         "published_at": "2026-08-15T10:00:00Z",
@@ -48,7 +48,7 @@ enum UpdateTests {
         "tag_name": "v2.0.0",
         "name": "Unreleased",
         "body": "Should never be offered.",
-        "html_url": "https://github.com/chrisziko/Snapper/releases/tag/v2.0.0",
+        "html_url": "https://github.com/chrisz24/Snapper/releases/tag/v2.0.0",
         "draft": true,
         "prerelease": false,
         "published_at": null,
@@ -58,7 +58,7 @@ enum UpdateTests {
         "tag_name": "nightly",
         "name": "Rolling",
         "body": "Not a version.",
-        "html_url": "https://github.com/chrisziko/Snapper/releases/tag/nightly",
+        "html_url": "https://github.com/chrisz24/Snapper/releases/tag/nightly",
         "draft": false,
         "prerelease": false,
         "published_at": "2026-08-22T10:00:00Z",
@@ -161,7 +161,7 @@ enum UpdateTests {
                 let beta = releases.first { $0.tag == "v1.3.0-beta.1" }
                 Harness.expect(beta?.asset == nil)
                 Harness.expectEqual(beta?.downloadURL.absoluteString,
-                                    "https://github.com/chrisziko/Snapper/releases/tag/v1.3.0-beta.1")
+                                    "https://github.com/chrisz24/Snapper/releases/tag/v1.3.0-beta.1")
             }
 
             Harness.test("an empty release name falls back to the tag") {
@@ -289,14 +289,14 @@ enum UpdateTests {
         Harness.suite("Update endpoint") {
             Harness.test("points at the configured repository") {
                 Harness.expectEqual(AppInfo.repositoryURL.absoluteString,
-                                    "https://github.com/chrisziko/Snapper")
+                                    "https://github.com/chrisz24/Snapper")
                 Harness.expectEqual(AppInfo.releasesPageURL.absoluteString,
-                                    "https://github.com/chrisziko/Snapper/releases")
+                                    "https://github.com/chrisz24/Snapper/releases")
             }
 
             Harness.test("asks for the whole release list, not GitHub's idea of latest") {
                 let url = AppInfo.releasesAPIURL.absoluteString
-                Harness.expect(url.hasPrefix("https://api.github.com/repos/chrisziko/Snapper/releases"), url)
+                Harness.expect(url.hasPrefix("https://api.github.com/repos/chrisz24/Snapper/releases"), url)
                 Harness.expect(!url.contains("/latest"), url)
             }
         }

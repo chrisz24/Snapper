@@ -1,6 +1,6 @@
 # Snapper
 
-[![CI](https://github.com/chrisziko/Snapper/actions/workflows/ci.yml/badge.svg)](https://github.com/chrisziko/Snapper/actions/workflows/ci.yml)
+[![CI](https://github.com/chrisz24/Snapper/actions/workflows/ci.yml/badge.svg)](https://github.com/chrisz24/Snapper/actions/workflows/ci.yml)
 
 A menu bar screenshot utility for macOS that keeps the familiar capture-and-preview behaviour and
 adds the two things missing from it: **text recognition from a selection**, and **quick actions that
@@ -25,7 +25,7 @@ work on the capture while its preview is still on screen**.
 
 ## Installing
 
-Download the latest `.dmg` from [Releases](https://github.com/chrisziko/Snapper/releases), open it,
+Download the latest `.dmg` from [Releases](https://github.com/chrisz24/Snapper/releases), open it,
 and drag Snapper to Applications.
 
 The build is signed with a Developer ID and notarized by Apple, so it opens with no Gatekeeper
