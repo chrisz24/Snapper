@@ -25,13 +25,14 @@ work on the capture while its preview is still on screen**.
 
 ## Installing
 
-Download the latest `.dmg` from [Releases](https://github.com/chrisz24/Snapper/releases), open it,
-and drag Snapper to Applications.
+Download the latest `.pkg` from [Releases](https://github.com/chrisz24/Snapper/releases) and open
+it. The installer puts Snapper in your Applications folder — no dragging, and no chance of running it
+from a mounted disk image by mistake. macOS will ask for your password, as it does for any installer.
 
 Snapper is signed and notarized by Apple, so it opens with no Gatekeeper warning and no
 right-click-Open dance.
 
-Requires **macOS 26 or later**.
+Requires **macOS 26 or later**, on Apple silicon.
 
 ## Screen Recording permission
 

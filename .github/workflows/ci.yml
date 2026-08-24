@@ -26,7 +26,7 @@ jobs:
       - name: build
         run: swift build -c release --product Snapper
 
-      # 99 tests in a plain executable: Command Line Tools ship neither XCTest nor swift-testing,
+      # 100 tests in a plain executable: Command Line Tools ship neither XCTest nor swift-testing,
       # so the suite is its own product with a small built-in harness.
       - name: test
         run: swift run -c debug SnapperTests

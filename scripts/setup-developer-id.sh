@@ -16,9 +16,29 @@ set -euo pipefail
 
 KEYCHAIN="snapper-distribution.keychain"
 SIGN_DIR="$HOME/Library/Application Support/com.zikopoulos.snapper/distribution"
-KEYFILE="$SIGN_DIR/developer-id.key"
-CSRFILE="$SIGN_DIR/developer-id.certSigningRequest"
 PWFILE="$SIGN_DIR/keychain-password"
+
+# Two certificates are needed to ship a signed, notarized installer, and they are different types
+# from the same account:
+#
+#   application   "Developer ID Application" — signs Snapper.app
+#   installer     "Developer ID Installer"   — signs the .pkg
+#
+# Each needs its own key and its own signing request; a certificate issued for one cannot sign the
+# other. KIND selects which one this run is dealing with.
+KIND="application"
+KEYFILE=""
+CSRFILE=""
+
+set_kind() {
+  case "${1:-application}" in
+    application|app)   KIND="application" ;;
+    installer|pkg)     KIND="installer" ;;
+    *) die "Unknown certificate kind '${1}' — expected 'application' or 'installer'." ;;
+  esac
+  KEYFILE="$SIGN_DIR/developer-id-$KIND.key"
+  CSRFILE="$SIGN_DIR/developer-id-$KIND.certSigningRequest"
+}
 INTERMEDIATE_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
 
 # Scratch space for the PKCS#12 bundle, which contains the private key in cleartext. Declared at
@@ -60,12 +80,21 @@ request() {
     -subj "/emailAddress=$email/CN=$name/C=US" 2>/dev/null
   chmod 600 "$KEYFILE"
 
+  local portal_choice download_name
+  if [ "$KIND" = "installer" ]; then
+    portal_choice='Software > "Developer ID Installer"'
+    download_name="developerID_installer.cer"
+  else
+    portal_choice='Software > "Developer ID Application"'
+    download_name="developerID_application.cer"
+  fi
+
   cat <<INSTRUCTIONS
 
 $(bold "Next, in a browser:")
 
   1. Open  https://developer.apple.com/account/resources/certificates/add
-  2. Choose  Software > "Developer ID Application"
+  2. Choose  $portal_choice
   3. Profile Type: "G2 Sub-CA (Xcode 11.4.1 or later)"
   4. Upload this file:
 
@@ -76,7 +105,7 @@ $(bold "Next, in a browser:")
   5. Download the certificate it produces — usually to ~/Downloads
   6. Come back and run:
 
-       ./scripts/setup-developer-id.sh import ~/Downloads/developerID_application.cer
+       ./scripts/setup-developer-id.sh import ~/Downloads/$download_name
 
 INSTRUCTIONS
   open -R "$CSRFILE" 2>/dev/null || true
@@ -100,13 +129,17 @@ import() {
   fi
   local subject; subject="$(openssl x509 -in "$WORK/cert.pem" -noout -subject 2>/dev/null || true)"
   echo "  $subject"
+  # Infer the kind from the certificate itself rather than trusting the argument, so importing an
+  # installer certificate cannot silently be matched against the application key.
   case "$subject" in
-    *"Developer ID Application"*) ;;
-    *) printf '  \033[33mwarning\033[0m: this is not a "Developer ID Application" certificate.\n'
-       echo "  Only that kind can notarize an app distributed outside the App Store."
+    *"Developer ID Application"*) set_kind application ;;
+    *"Developer ID Installer"*)   set_kind installer ;;
+    *) printf '  \033[33mwarning\033[0m: this is neither a "Developer ID Application" nor a "Developer ID Installer" certificate.\n'
+       echo "  Those are the only two that matter for distributing outside the App Store."
        read -r -p "  Import it anyway? [y/N] " reply
        [[ "$reply" =~ ^[Yy]$ ]] || die "Stopped." ;;
   esac
+  echo "  kind: Developer ID $KIND"
 
   # Fail early rather than after importing: a key/certificate mismatch is the usual outcome of
   # re-running 'request' between downloading and importing.
@@ -114,14 +147,14 @@ import() {
   keymod="$(openssl rsa -in "$KEYFILE" -noout -modulus 2>/dev/null)"
   certmod="$(openssl x509 -in "$WORK/cert.pem" -noout -modulus 2>/dev/null)"
   [ "$keymod" = "$certmod" ] \
-    || die "This certificate was not issued for the key in $KEYFILE. Run '$0 request' and upload the new CSR."
+    || die "This certificate was not issued for the key in $KEYFILE. Run '$0 request $KIND' and upload that CSR."
 
   bold "==> bundling key and certificate"
   # PBE-SHA1-3DES is pinned because Security.framework cannot read OpenSSL 3's AES-256-CBC/PBKDF2
   # default — `security import` rejects it with "Unknown format in import."
   openssl pkcs12 -export -out "$WORK/identity.p12" \
     -inkey "$KEYFILE" -in "$WORK/cert.pem" \
-    -passout pass:transient -name "Snapper Developer ID" \
+    -passout pass:transient -name "Snapper Developer ID $KIND" \
     -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 2>/dev/null
 
   local kcpass
@@ -215,21 +248,31 @@ status() {
   else
     echo "  $KEYCHAIN does not exist yet"
   fi
-  bold "key"
-  [ -f "$KEYFILE" ] && echo "  $KEYFILE" || echo "  none — run '$0 request'"
-  bold "signing identities visible to codesign"
-  security find-identity -v -p codesigning 2>/dev/null | sed 's/^/  /'
+  bold "keys"
+  for kind in application installer; do
+    local f="$SIGN_DIR/developer-id-$kind.key"
+    [ -f "$f" ] && echo "  $kind: $f" || echo "  $kind: none — run '$0 request $kind'"
+  done
+  bold "identities that can sign code (the app)"
+  security find-identity -v -p codesigning 2>/dev/null | sed -n 's/^ *[0-9]) /  /p' \
+    || echo "  none"
+  bold "identities that can sign installers (the pkg)"
+  security find-identity -v -p basic 2>/dev/null | grep -i "Developer ID Installer" | sed 's/^/  /' \
+    || echo "  none — run '$0 request installer'"
 }
 
 case "${1:-}" in
-  request) request ;;
-  import)  import "${2:-}" ;;
-  status)  status ;;
+  request) set_kind "${2:-application}"; request ;;
+  import)  set_kind application; import "${2:-}" ;;
+  status)  set_kind application; status ;;
   *) cat <<USAGE
 Usage:
-  $0 request                  generate a key and a CSR to upload to Apple
-  $0 import <file.cer>        import the certificate Apple issued
-  $0 status                   show what is set up so far
+  $0 request [application|installer]   generate a key and a CSR to upload to Apple
+  $0 import <file.cer>                 import the certificate Apple issued (kind is detected)
+  $0 status                            show what is set up so far
+
+"application" signs Snapper.app. "installer" signs the .pkg. Shipping a notarized
+installer needs both; they are separate certificates from the same Apple account.
 USAGE
      exit 1 ;;
 esac

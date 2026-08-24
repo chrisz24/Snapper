@@ -97,11 +97,14 @@ extension GitHubRelease {
         self.publishedAt = payload.published_at
     }
 
-    /// A `.dmg` if one was uploaded, else a `.zip`, else a `.pkg`. Checksums and notes attached
+    /// A `.pkg` if one was uploaded, else a `.dmg`, else a `.zip`. Checksums and notes attached
     /// alongside the build are skipped — offering someone a `.sha256` as "the download" is worse
     /// than offering them the release page.
+    ///
+    /// `.dmg` stays in the list below `.pkg` so that releases published before the switch to an
+    /// installer still resolve to their real download rather than falling back to the release page.
     static func bestAsset(among assets: [Payload.AssetPayload]) -> Asset? {
-        let preference = ["dmg", "zip", "pkg"]
+        let preference = ["pkg", "dmg", "zip"]
         var best: (rank: Int, asset: Asset)?
 
         for candidate in assets {

@@ -23,8 +23,8 @@ make test       # run the unit suite
 make identity   # which of the three signing paths this machine will take, and why
 ```
 
-The version comes from the `VERSION` file, which is also what the git tag and the DMG name are built
-from, so they cannot drift apart.
+The version comes from the `VERSION` file, which is also what the git tag and the package name are
+built from, so they cannot drift apart.
 
 ## Diagnostics
 
@@ -87,12 +87,18 @@ A build other people can open has to be signed with an Apple-issued **Developer 
 **notarized**. Neither ad-hoc nor the self-signed `make cert` identity qualifies: Gatekeeper will
 refuse the app on any Mac but the one that built it.
 
-Two one-time setups, both needing a paid Apple Developer Program membership:
+Three one-time setups, all needing a paid Apple Developer Program membership:
 
 ```bash
-make developer-id     # generate a key + CSR, upload it to Apple, import the certificate
+make developer-id     # "Developer ID Application" — signs the app
+make installer-id     # "Developer ID Installer"   — signs the .pkg
 make notary-setup     # store the credentials notarytool authenticates with
 ```
+
+The two certificates are **different types from the same account**, and neither can do the other's
+job: a certificate issued for the app cannot sign the installer. Each needs its own key and its own
+signing request, which is why there are two commands. `make identity` shows which of the two you
+have.
 
 `make developer-id` exists because Xcode normally handles the key-and-CSR dance and there is no
 Xcode here. It generates the key locally — Apple only ever sees the signing request — prints the
@@ -117,7 +123,7 @@ runtime and a secure timestamp, which notarization requires.
 
 ```bash
 make notarize   # notarize dist/Snapper.app and staple the ticket to it
-make dmg        # signed disk image with a drag-to-Applications window
+make pkg        # signed installer package
 make zip        # the same build as a zip
 make verify     # what Gatekeeper will conclude on someone else's Mac
 make release    # everything: test, build, notarize, package, publish to GitHub
@@ -139,12 +145,23 @@ Notarization records a ticket on Apple's servers, and Gatekeeper will fetch it o
 a machine that is offline or behind a filter cannot. Stapling writes the ticket into the bundle so
 the check passes without a network.
 
-The app is notarized and stapled *first*, and the DMG and zip are then cut from the stapled bundle.
-Done the other way round, the copy inside the DMG would carry no ticket.
+The app is notarized and stapled *first*, and the package and zip are then built from the stapled
+bundle. Done the other way round, the copy inside the installer would carry no ticket.
 
-Note that the hardened runtime applies to the app but not to the disk image: it is a property of
-executable code, and `codesign` will not set that flag on a container. A DMG does still need a secure
-timestamp to be notarizable.
+Note that the hardened runtime applies to the app but not to the package: it is a property of
+executable code, and `productbuild` will not set that flag on a container. A `.pkg` does still need a
+secure timestamp to be notarizable.
+
+### The one line in make-pkg.sh that matters most
+
+`pkgbuild` defaults `BundleIsRelocatable` to **true**, which makes Installer hunt for an existing
+copy of the app *anywhere on the disk* and update that instead of installing to `/Applications`.
+Anyone with a build in `~/Applications` — which `make install` puts there — would have it silently
+overwritten, and nothing would appear where they expected. `make-pkg.sh` pins it to false.
+
+The distribution file also declares the OS floor from the bundle's `LSMinimumSystemVersion` and the
+architectures actually present in the binary. Without those, Installer happily installs on an older
+macOS or an Intel Mac and the app simply never launches.
 
 ### Why releases are not cut in CI
 
@@ -156,6 +173,10 @@ signs; releases are made locally with `make release`.
 
 One unauthenticated `GET` to the public Releases API — no token, no account, nothing about the
 machine beyond what any HTTP request carries.
+
+The download it offers is the `.pkg`, falling back to a `.dmg` and then a `.zip` — the `.dmg` entry
+is kept so that releases published before the switch to an installer still resolve to a real
+download instead of the release page.
 
 It reads the whole release list rather than GitHub's `/releases/latest`, because "latest" there means
 *most recently published*, not *highest version* — re-publishing an old tag would otherwise look like
@@ -176,6 +197,6 @@ The repository the updater queries is set by two constants in
 make test
 ```
 
-99 tests. Command Line Tools ship neither XCTest nor swift-testing, so the suite is an ordinary
+100 tests. Command Line Tools ship neither XCTest nor swift-testing, so the suite is an ordinary
 executable target with a small built-in harness in `Tests/SnapperTests/Harness.swift`. Everything
 under test is public API, so no `@testable` import is needed.

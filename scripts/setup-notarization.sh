@@ -158,6 +158,6 @@ Done. The profile lives in your login keychain, not in this repo.
 
 Next:
   make notarize     # build, sign with Developer ID, notarize, staple
-  make release      # the above, plus a DMG and a GitHub release
+  make release      # the above, plus an installer and a GitHub release
 
 NEXT

@@ -7,9 +7,9 @@
 # the irreversible parts — a pushed tag, a published release — are annoying to undo. The one
 # confirmation prompt is immediately before publishing.
 #
-# Order matters: the app is notarized and stapled *first*, then the DMG and zip are built from the
-# stapled bundle. Done the other way round, the copy inside the DMG would carry no ticket and would
-# still need a network to pass Gatekeeper.
+# Order matters: the app is notarized and stapled *first*, then the package and zip are built from
+# the stapled bundle. Done the other way round, the copy inside the installer would carry no ticket
+# and would still need a network to pass Gatekeeper.
 set -euo pipefail
 
 VERSION="${1:-$(cat VERSION 2>/dev/null || true)}"
@@ -28,7 +28,7 @@ die()  { printf '\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
   || die "'$VERSION' is not a version. Use MAJOR.MINOR.PATCH, optionally with a -beta.1 suffix."
 
 TAG="v$VERSION"
-DMG="$DIST/$NAME-$VERSION.dmg"
+PKG="$DIST/$NAME-$VERSION.pkg"
 ZIP="$DIST/$NAME-$VERSION.zip"
 SUMS="$DIST/$NAME-$VERSION-checksums.txt"
 
@@ -63,8 +63,16 @@ ok "VERSION file matches"
 DEVELOPER_ID="$(security find-identity -v -p codesigning 2>/dev/null \
   | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
 [ -n "$DEVELOPER_ID" ] \
-  || die "No Developer ID Application certificate. Run: ./scripts/setup-developer-id.sh request"
+  || die "No Developer ID Application certificate. Run: make developer-id"
 ok "$DEVELOPER_ID"
+
+# The package needs its own certificate. Checked here rather than after the tests and two
+# notarization round trips have already run.
+INSTALLER_ID="$(security find-identity -v -p basic 2>/dev/null \
+  | sed -n 's/.*"\(Developer ID Installer: [^"]*\)".*/\1/p' | head -1)"
+[ -n "$INSTALLER_ID" ] \
+  || die "No Developer ID Installer certificate — an unsigned package cannot be notarized. Run: make installer-id"
+ok "$INSTALLER_ID"
 
 xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
   || die "No notarization credentials for profile '$PROFILE'. Run: ./scripts/setup-notarization.sh"
@@ -88,14 +96,15 @@ rm -f "$ZIP"
 /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
 ok "$ZIP ($(du -h "$ZIP" | cut -f1))"
 
-CODESIGN_IDENTITY="$DEVELOPER_ID" ./scripts/make-dmg.sh "$APP" "$VERSION"
+INSTALLER_IDENTITY="$INSTALLER_ID" ./scripts/make-pkg.sh "$APP" "$VERSION"
 
-bold "==> notarize the disk image"
-# The DMG is a separate signed object; a notarized app inside an un-notarized DMG still warns.
-./scripts/notarize.sh "$DMG"
+bold "==> notarize the installer"
+# The package is a separate signed object; a notarized app inside an un-notarized installer still
+# makes Gatekeeper refuse the installer.
+./scripts/notarize.sh "$PKG"
 
 bold "==> checksums"
-( cd "$DIST" && shasum -a 256 "$(basename "$DMG")" "$(basename "$ZIP")" > "$(basename "$SUMS")" )
+( cd "$DIST" && shasum -a 256 "$(basename "$PKG")" "$(basename "$ZIP")" > "$(basename "$SUMS")" )
 sed 's/^/  /' "$SUMS"
 
 # ---------------------------------------------------------------- notes
@@ -131,7 +140,7 @@ cat >> "$NOTES_FILE" <<NOTES
 
 ## Install
 
-Download **$(basename "$DMG")**, open it, and drag Snapper to Applications.
+Download **$(basename "$PKG")** and open it. The installer puts Snapper in /Applications.
 
 The app is signed with a Developer ID and notarized by Apple, so it opens without a Gatekeeper
 warning. On first launch, grant **Screen Recording** in System Settings → Privacy & Security →
@@ -150,7 +159,7 @@ cat <<SUMMARY
   tag:     $TAG
   commit:  $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD)
   remote:  $(git remote get-url origin 2>/dev/null || echo "none")
-  assets:  $(basename "$DMG")
+  assets:  $(basename "$PKG")
            $(basename "$ZIP")
            $(basename "$SUMS")
 
@@ -174,7 +183,7 @@ RELEASE_ARGS=(
 # A version with a suffix — 0.3.0-beta.1 — is published as a pre-release, which is exactly what
 # the updater's "Include pre-releases" setting filters on.
 case "$VERSION" in *-*) RELEASE_ARGS+=(--prerelease) ;; esac
-RELEASE_ARGS+=("$DMG" "$ZIP" "$SUMS")
+RELEASE_ARGS+=("$PKG" "$ZIP" "$SUMS")
 
 gh release create "${RELEASE_ARGS[@]}"
 

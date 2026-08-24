@@ -3,8 +3,8 @@
 
 NAME        := Snapper
 BUNDLE_ID   := com.zikopoulos.snapper
-# Single source of truth for the release number: the VERSION file. The Info.plist, the DMG name and
-# the git tag all come from here, so they cannot drift apart. Override for a one-off build only.
+# Single source of truth for the release number: the VERSION file. The Info.plist, the package name
+# and the git tag all come from here, so they cannot drift apart. Override for a one-off build only.
 VERSION     ?= $(shell cat VERSION 2>/dev/null || echo 0.0.0)
 BUILD       := $(shell date +%Y%m%d%H%M)
 CONFIG      := release
@@ -16,7 +16,7 @@ CONTENTS    := $(APP)/Contents
 MACOS_DIR   := $(CONTENTS)/MacOS
 RES_DIR     := $(CONTENTS)/Resources
 
-DMG         := $(DIST)/$(NAME)-$(VERSION).dmg
+PKG         := $(DIST)/$(NAME)-$(VERSION).pkg
 ZIP         := $(DIST)/$(NAME)-$(VERSION).zip
 
 # Signing identity, in order of preference.
@@ -51,7 +51,7 @@ endif
 INSTALL_DIR ?= $(HOME)/Applications
 
 .PHONY: all build bundle sign app run install test clean uninstall reset-permissions \
-        cert cert-remove developer-id notary-setup dmg zip notarize verify release identity icon
+        cert cert-remove developer-id installer-id notary-setup pkg zip notarize verify release identity icon
 
 all: app
 
@@ -132,9 +132,14 @@ uninstall:
 identity:
 	@echo "identity in use: $(CODESIGN_IDENTITY)"
 	@if [ -n "$(DEVELOPER_ID)" ]; then \
-		echo "  distributable: yes — this can be notarized"; \
+		echo "  app signing:   yes — the app can be notarized"; \
 	else \
-		echo "  distributable: no  — run 'make developer-id' to set up a Developer ID"; \
+		echo "  app signing:   no  — run 'make developer-id'"; \
+	fi
+	@if [ -n "$(INSTALLER_ID)" ]; then \
+		echo "  pkg signing:   $(INSTALLER_ID)"; \
+	else \
+		echo "  pkg signing:   no  — run 'make installer-id'"; \
 	fi
 	@echo
 	@echo "Apple-issued identities (these chain to a trusted root):"
@@ -168,15 +173,23 @@ reset-permissions:
 
 # One-time setup for shipping builds other people can open.
 developer-id:
-	@./scripts/setup-developer-id.sh request
+	@./scripts/setup-developer-id.sh request application
+
+# The second certificate, needed only to sign the installer package.
+installer-id:
+	@./scripts/setup-developer-id.sh request installer
 
 notary-setup:
 	@./scripts/setup-notarization.sh
 
-dmg: app
-	@CODESIGN_IDENTITY="$(CODESIGN_IDENTITY)" ./scripts/make-dmg.sh "$(APP)" "$(VERSION)"
+# Signing a package uses a "Developer ID Installer" certificate, which is a different certificate
+# from the "Developer ID Application" one that signs the app.
+INSTALLER_ID := $(shell security find-identity -v -p basic 2>/dev/null | sed -n 's/.*"\(Developer ID Installer: [^"]*\)".*/\1/p' | head -1)
 
-# The zip is what a future in-app updater would download; the DMG is what a person downloads.
+pkg: app
+	@INSTALLER_IDENTITY="$(INSTALLER_ID)" ./scripts/make-pkg.sh "$(APP)" "$(VERSION)"
+
+# The zip is what a future in-app updater would download; the installer is what a person downloads.
 # ditto rather than zip, because a .app's symlinks and extended attributes matter.
 zip: app
 	@rm -f "$(ZIP)"

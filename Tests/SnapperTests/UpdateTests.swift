@@ -29,9 +29,10 @@ enum UpdateTests {
         "prerelease": false,
         "published_at": "2026-08-01T10:00:00Z",
         "assets": [
-          { "name": "Snapper-1.2.0.dmg.sha256", "browser_download_url": "https://example.invalid/sum", "size": 96, "state": "uploaded" },
+          { "name": "Snapper-1.2.0-checksums.txt", "browser_download_url": "https://example.invalid/sum", "size": 96, "state": "uploaded" },
           { "name": "Snapper-1.2.0.zip", "browser_download_url": "https://example.invalid/1.2.0.zip", "size": 4194304, "state": "uploaded" },
-          { "name": "Snapper-1.2.0.dmg", "browser_download_url": "https://example.invalid/1.2.0.dmg", "size": 6291456, "state": "uploaded" }
+          { "name": "Snapper-1.2.0.dmg", "browser_download_url": "https://example.invalid/1.2.0.dmg", "size": 6291456, "state": "uploaded" },
+          { "name": "Snapper-1.2.0.pkg", "browser_download_url": "https://example.invalid/1.2.0.pkg", "size": 5242880, "state": "uploaded" }
         ]
       },
       {
@@ -152,9 +153,15 @@ enum UpdateTests {
                                     "v1.3.0-beta.1")
             }
 
-            Harness.test("prefers a dmg over a zip and never offers a checksum") {
+            Harness.test("prefers the installer over a dmg or zip, and never offers a checksum") {
                 let latest = releases.first { $0.tag == "v1.2.0" }
-                Harness.expectEqual(latest?.asset?.name, "Snapper-1.2.0.dmg")
+                Harness.expectEqual(latest?.asset?.name, "Snapper-1.2.0.pkg")
+            }
+
+            Harness.test("still resolves a release that predates the installer") {
+                // v0.9.0 in the fixture has only a .dmg, the way releases cut before the switch do.
+                let older = releases.first { $0.tag == "v0.9.0" }
+                Harness.expectEqual(older?.asset?.name, "Snapper-0.9.0.dmg")
             }
 
             Harness.test("falls back to the release page when nothing is attached") {

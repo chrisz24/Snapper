@@ -11,7 +11,7 @@ machine they were created on.
 ## 2. Build
 
 ```bash
-make test      # 99 unit tests, no permissions needed
+make test      # 100 unit tests, no permissions needed
 make app       # build + bundle + sign into dist/
 ```
 
@@ -44,7 +44,7 @@ dist/Snapper.app/Contents/MacOS/Snapper --self-test
 ## 5. Verify the whole thing
 
 ```bash
-make test                                                  # 99 unit tests
+make test                                                  # 100 unit tests
 dist/Snapper.app/Contents/MacOS/Snapper --ocr-test         # text recognition, no permissions
 dist/Snapper.app/Contents/MacOS/Snapper --preview-test     # preview, key grab, multi-display
 dist/Snapper.app/Contents/MacOS/Snapper --settings-test    # settings window, shortcut recorder
@@ -60,7 +60,8 @@ Other diagnostics: `--dump-shortcuts`, `--preview-demo N`, `--settings-demo <tab
 Building is self-contained; *publishing* is not. Both of these are per-machine and per-account:
 
 ```bash
-make developer-id     # Apple-issued signing certificate (needs a paid membership)
+make developer-id     # certificate that signs the app   (needs a paid membership)
+make installer-id     # certificate that signs the .pkg  (same account, different type)
 make notary-setup     # credentials for notarytool
 ```
 
@@ -72,7 +73,7 @@ build only this Mac will open.
 | | Why |
 | --- | --- |
 | `snapper-signing.keychain` | Private key belongs to the old Mac's keychain. Run `make cert`. |
-| `snapper-distribution.keychain` | Same reason, for the Developer ID key. Run `make developer-id`. |
+| `snapper-distribution.keychain` | Same reason, for the Developer ID keys. Run `make developer-id` and `make installer-id`. |
 | notarytool credentials | Stored in the login keychain. Run `make notary-setup`. |
 | Screen Recording permission | Per-machine, and tied to the signing identity. |
 | Capture history, unsaved captures, thumbnails | Local data in `~/Library/Application Support/com.zikopoulos.snapper`. |
