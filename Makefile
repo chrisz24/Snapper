@@ -172,15 +172,41 @@ cert-remove:
 # so `hasCompletedSetup` survives and the setup window never reappears.
 reset-settings:
 	-@pkill -x $(NAME) 2>/dev/null || true
+	@# Waiting for the process to actually be gone, not a fixed sleep. SIGTERM makes the app flush
+	@# its cached UserDefaults on the way out, so clearing them while it is still exiting lets it
+	@# write the old values back afterwards — the reset reports success and the next launch still
+	@# skips setup.
+	@for i in $$(seq 1 40); do \
+		pgrep -x $(NAME) >/dev/null 2>&1 || break; \
+		sleep 0.25; \
+	done
+	@if pgrep -x $(NAME) >/dev/null 2>&1; then \
+		echo "$(NAME) is still running and will not quit — close it and try again"; \
+		exit 1; \
+	fi
 	@sleep 1
 	@if [ -f "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist" ]; then \
 		cp "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist" "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist.bak"; \
 		echo "backed up → ~/Library/Preferences/$(BUNDLE_ID).plist.bak"; \
 	fi
-	-@defaults delete $(BUNDLE_ID) 2>/dev/null || true
-	@# cfprefsd caches preferences in memory and will write the old values back out from under you.
+	@# Order matters, and getting it wrong is silent. cfprefsd owns a write-behind cache for this
+	@# domain: killing it *after* `defaults delete` discards the deletion and it writes the old
+	@# values back out as it exits, so the reset appears to succeed and changes nothing. Drop the
+	@# cache first, then remove the file, then delete the domain.
 	-@killall -u "$$(id -un)" cfprefsd 2>/dev/null || true
-	@echo "cleared settings for $(BUNDLE_ID) — the next launch runs setup from scratch"
+	@sleep 1
+	-@rm -f "$(HOME)/Library/Preferences/$(BUNDLE_ID).plist" 2>/dev/null || true
+	-@defaults delete $(BUNDLE_ID) 2>/dev/null || true
+	@sleep 1
+	@# Verified rather than assumed, because the failure mode above leaves no trace.
+	@if defaults read $(BUNDLE_ID) >/dev/null 2>&1; then \
+		echo "FAILED — settings survived:"; \
+		defaults read $(BUNDLE_ID) | sed 's/^/    /'; \
+		echo "  quit $(NAME) and try again"; \
+		exit 1; \
+	else \
+		echo "cleared settings for $(BUNDLE_ID) — the next launch runs setup from scratch"; \
+	fi
 
 # Clears this app's TCC entries so the permission prompt appears again from scratch.
 reset-permissions:
