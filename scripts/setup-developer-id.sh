@@ -21,6 +21,13 @@ CSRFILE="$SIGN_DIR/developer-id.certSigningRequest"
 PWFILE="$SIGN_DIR/keychain-password"
 INTERMEDIATE_URL="https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer"
 
+# Scratch space for the PKCS#12 bundle, which contains the private key in cleartext. Declared at
+# file scope, not inside a function: a trap registered against a `local` runs after that local has
+# gone out of scope, so under `set -u` the cleanup aborts and the key material is left behind.
+WORK=""
+cleanup() { [ -n "$WORK" ] && [ -d "$WORK" ] && rm -rf "$WORK"; return 0; }
+trap cleanup EXIT INT TERM
+
 bold() { printf '\033[1m%s\033[0m\n' "$1"; }
 die()  { printf '\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 
@@ -83,15 +90,15 @@ import() {
   [ -f "$cer" ] || die "No such file: $cer"
   [ -f "$KEYFILE" ] || die "No private key at $KEYFILE — run '$0 request' first."
 
-  local work; work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+  WORK="$(mktemp -d)"; chmod 700 "$WORK"
 
   bold "==> reading the certificate"
   # The portal hands back DER; openssl needs to be told, and this also validates the file.
-  if ! openssl x509 -inform DER -in "$cer" -out "$work/cert.pem" 2>/dev/null; then
-    openssl x509 -inform PEM -in "$cer" -out "$work/cert.pem" 2>/dev/null \
+  if ! openssl x509 -inform DER -in "$cer" -out "$WORK/cert.pem" 2>/dev/null; then
+    openssl x509 -inform PEM -in "$cer" -out "$WORK/cert.pem" 2>/dev/null \
       || die "That does not look like a certificate."
   fi
-  local subject; subject="$(openssl x509 -in "$work/cert.pem" -noout -subject 2>/dev/null || true)"
+  local subject; subject="$(openssl x509 -in "$WORK/cert.pem" -noout -subject 2>/dev/null || true)"
   echo "  $subject"
   case "$subject" in
     *"Developer ID Application"*) ;;
@@ -105,15 +112,15 @@ import() {
   # re-running 'request' between downloading and importing.
   local keymod certmod
   keymod="$(openssl rsa -in "$KEYFILE" -noout -modulus 2>/dev/null)"
-  certmod="$(openssl x509 -in "$work/cert.pem" -noout -modulus 2>/dev/null)"
+  certmod="$(openssl x509 -in "$WORK/cert.pem" -noout -modulus 2>/dev/null)"
   [ "$keymod" = "$certmod" ] \
     || die "This certificate was not issued for the key in $KEYFILE. Run '$0 request' and upload the new CSR."
 
   bold "==> bundling key and certificate"
   # PBE-SHA1-3DES is pinned because Security.framework cannot read OpenSSL 3's AES-256-CBC/PBKDF2
   # default — `security import` rejects it with "Unknown format in import."
-  openssl pkcs12 -export -out "$work/identity.p12" \
-    -inkey "$KEYFILE" -in "$work/cert.pem" \
+  openssl pkcs12 -export -out "$WORK/identity.p12" \
+    -inkey "$KEYFILE" -in "$WORK/cert.pem" \
     -passout pass:transient -name "Snapper Developer ID" \
     -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 2>/dev/null
 
@@ -140,7 +147,7 @@ import() {
   fi
 
   bold "==> importing the identity"
-  security import "$work/identity.p12" -k "$KEYCHAIN" -P transient -T /usr/bin/codesign -A >/dev/null
+  security import "$WORK/identity.p12" -k "$KEYCHAIN" -P transient -T /usr/bin/codesign -A >/dev/null
   # Authorises codesign up front so no modal dialog interrupts a build.
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kcpass" "$KEYCHAIN" >/dev/null 2>&1
 
@@ -196,6 +203,7 @@ ensure_intermediate() {
     echo "  download failed — add it by hand from $INTERMEDIATE_URL if signing fails."
   fi
   rm -rf "$tmp"
+  # Nothing secret here — a public CA certificate — but leaving temp dirs around is still untidy.
 }
 
 # ---------------------------------------------------------------- status
