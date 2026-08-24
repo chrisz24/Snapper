@@ -3,6 +3,21 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.1
+
+- **Setup no longer skips itself when you quit to grant Screen Recording.** macOS only applies that
+  permission to a new launch, so quitting is a step in the middle of setup — but the app treated the
+  window closing as "setup finished" and came back with the remaining steps reachable only from the
+  menu bar.
+- **Added a "Quit & Reopen" button** to the Screen Recording step, so the required restart is one
+  click instead of something you have to work out and do by hand. Setup resumes where it left off.
+- **`--self-test` no longer changes your settings.** It pointed the save folder at its own sandbox
+  and muted the shutter, and left both that way — so running a diagnostic quietly reconfigured where
+  your screenshots went.
+- Added `make reset-settings`, which clears stored preferences so the next launch behaves like a
+  genuine first run. Uninstalling the app never did this: preferences live in your home folder, not
+  in the app.
+
 ## 0.1.0
 
 First public release.
