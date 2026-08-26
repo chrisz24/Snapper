@@ -3,8 +3,26 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
-## Unreleased
+## 0.1.2
 
+- **The shortcut hints under a preview no longer collapse on a tall screenshot.** The row was held
+  to the thumbnail's width, and a portrait capture makes that thumbnail narrower than the hints
+  themselves — so "Copy", "Save" and "Delete" were squeezed until each wrapped one letter per line,
+  and the pill then spilled out of the panel and was cut off. The row keeps its own width now and
+  the panel widens to suit it.
+- **"Open at login" can be switched on again.** The switch was disabled whenever macOS reported no
+  login item registered — which is what it reports for an app that has never registered one. So it
+  was greyed out because nothing was registered, and nothing could be registered because it was
+  greyed out, while the caption told you to move an app that was already in the right place. If a
+  registration is refused you now get the reason macOS gave.
+- **Added Uninstall**, in Settings → About. It lists what it will remove — settings, capture
+  history, caches, the login item, the app itself — with sizes, before it touches anything. Two
+  things it tells you rather than pretending: Screen Recording has to be withdrawn by hand, because
+  no app may revoke that for itself, and a copy installed by the package lives in /Applications
+  owned by root, so moving it to the Trash needs Finder and your password.
+- **Opening Snapper while it is already running opens Settings.** macOS does not start a second
+  copy, it notifies the running one — and a menu-bar app has no window to raise, so the app
+  appeared to ignore being opened at all.
 - **Updates install in place.** "Install" downloads the package, checks it is signed by the same
   developer as your copy and accepted by macOS, then hands it to the system installer — no browser,
   no manual download. macOS still asks for your password, because the app lives in /Applications and
