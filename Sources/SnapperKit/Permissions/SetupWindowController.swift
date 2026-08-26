@@ -28,6 +28,9 @@ public final class SetupWindowController: NSObject, NSWindowDelegate {
 
     public var debugWindow: NSWindow? { window }
 
+    /// Whether first-run setup is on screen, so a reopen does not bury it under Settings.
+    public var isShowing: Bool { window?.isVisible == true }
+
     /// Shows setup only if it has never been seen.
     public func showIfNeeded() {
         guard !settings.hasCompletedSetup else { return }

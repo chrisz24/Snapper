@@ -395,6 +395,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         perform(action)
     }
 
+    /// Opening the app while it is already running brings up Settings.
+    ///
+    /// macOS does not start a second copy: it sends the running one a reopen event. An accessory
+    /// app has no window to unminiaturize and no document to open, so AppKit's default handling
+    /// does nothing whatsoever — double-clicking Snapper in the Applications folder appeared to be
+    /// broken. Settings is the only thing there is to show.
+    public func applicationShouldHandleReopen(_ sender: NSApplication,
+                                              hasVisibleWindows: Bool) -> Bool {
+        if setup.isShowing {
+            // First-run setup is the one thing that should not be buried by this.
+            setup.show()
+        } else {
+            settingsWindow.show(tab: .general)
+        }
+        // Handled here. Returning true would hand back to AppKit's default, which for an app with
+        // no visible windows and no documents is a no-op.
+        return false
+    }
+
     @objc private func openSettings() {
         settingsWindow.show(tab: .general)
     }
