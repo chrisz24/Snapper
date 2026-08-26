@@ -7,6 +7,15 @@ import AppKit
 @MainActor
 public enum SettingsDemo {
 
+    /// True when the demo was asked to open the uninstall sheet, so that screen can be inspected
+    /// without anyone clicking a destructive button. Read here rather than threaded through three
+    /// view layers for a flag that only a demo ever sets.
+    ///
+    ///     dist/Snapper.app/Contents/MacOS/Snapper --settings-demo about 8 --uninstall-sheet
+    public static var opensUninstallSheet: Bool {
+        CommandLine.arguments.contains("--uninstall-sheet")
+    }
+
     public static func run(settings: SettingsStore, bindings: HotkeyBindings,
                            tab: SettingsTab, seconds: Double) async -> Int32 {
         let controller = SettingsWindowController(settings: settings, bindings: bindings, onHotkeysChanged: {})

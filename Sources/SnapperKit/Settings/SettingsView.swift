@@ -115,6 +115,8 @@ private struct SliderRow: View {
 private struct GeneralPane: View {
     @ObservedObject var settings: SettingsStore
     @State private var launchAtLogin = LoginItem.isEnabled
+    /// Set only when a login-item change was refused, so the reason can be shown.
+    @State private var loginItemProblem: String?
 
     var body: some View {
         Form {
@@ -143,14 +145,27 @@ private struct GeneralPane: View {
             Section {
                 Toggle("Open at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in
-                        launchAtLogin = LoginItem.setEnabled(newValue)
+                        let outcome = LoginItem.setEnabled(newValue)
+                        launchAtLogin = outcome.isEnabled
                         settings.launchAtLogin = launchAtLogin
+                        // Only a refusal needs explaining; success speaks for itself.
+                        loginItemProblem = {
+                            switch outcome {
+                            case .enabled, .disabled: nil
+                            case .needsApproval: LoginItem.statusDescription
+                            case .failed(let reason): reason
+                            }
+                        }()
                     }
-                    // macOS refuses to register a login item from some locations; offering a
-                    // switch that silently does nothing is worse than showing it disabled.
+                    // Disabled only where macOS genuinely will not register one — outside an
+                    // Applications folder. Anywhere else the attempt is allowed to happen and
+                    // report its own outcome, rather than being pre-emptively refused.
                     .disabled(!LoginItem.isAvailable)
             } footer: {
-                if !LoginItem.isAvailable {
+                if let loginItemProblem {
+                    Label(loginItemProblem, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                } else if !LoginItem.isAvailable {
                     Label(LoginItem.statusDescription, systemImage: "info.circle")
                         .foregroundStyle(.secondary)
                 }
@@ -497,6 +512,7 @@ private struct GlobalShortcutRow: View {
 private struct AboutPane: View {
     @ObservedObject var settings: SettingsStore
     @State private var hasScreenRecording = PermissionsChecker.hasScreenRecordingAccess
+    @State private var showingUninstall = SettingsDemo.opensUninstallSheet
     /// The pane's own checker. Separate from the delegate's, which only matters in that a check
     /// started here and one started from the menu bar are independent — both read and write the
     /// same stored timestamp and skipped version, so they stay consistent.
@@ -591,8 +607,26 @@ private struct AboutPane: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section {
+                LabeledContent("Remove \(AppInfo.name) and its data") {
+                    Button("Uninstall…") { showingUninstall = true }
+                }
+            } header: {
+                Text("Uninstall")
+            } footer: {
+                Text("Deletes the settings, capture history and caches, unregisters the login item "
+                     + "and moves the app to the Trash. You are shown the full list first.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingUninstall) {
+            UninstallSheet(
+                onFinished: { showingUninstall = false },
+                onCancel: { showingUninstall = false }
+            )
+        }
     }
 
     private var lastCheckedLabel: String {

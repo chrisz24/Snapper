@@ -125,7 +125,12 @@ struct PreviewView: View {
             Capsule().fill(Color.black.opacity(model.isHovering ? 0.75 : 0.6))
         )
         .animation(.easeOut(duration: 0.12), value: model.isHovering)
-        .frame(maxWidth: thumbnailSize.width, alignment: .leading)
+        // Never squeezed to the thumbnail's width. A tall capture makes the thumbnail narrower
+        // than this row, and clamping it there compressed each label until it wrapped one
+        // character per line — while still reporting its unwrapped height, so the pill overflowed
+        // the panel and was clipped. The panel measures itself from this view, so letting the row
+        // keep its natural width simply widens the panel to fit; the row is a fixed three actions,
+        // so that width is bounded and lands where a landscape preview already sits.
         .fixedSize()
     }
 }

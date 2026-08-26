@@ -35,6 +35,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             Task { exit(await OCRSelfTest.run()) }
             return
         }
+        if CommandLine.arguments.contains("--uninstall-plan") {
+            Uninstaller.printPlan()
+            exit(0)
+        }
+        if CommandLine.arguments.contains("--login-item-status") {
+            print(LoginItem.diagnosticReport)
+            exit(0)
+        }
         if CommandLine.arguments.contains("--dump-shortcuts") {
             exit(ShortcutDump.run(bindings: bindings))
         }
@@ -56,7 +64,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         if let i = CommandLine.arguments.firstIndex(of: "--preview-demo") {
             let seconds = CommandLine.arguments.count > i + 1
                 ? Double(CommandLine.arguments[i + 1]) ?? 6 : 6
-            Task { exit(await PreviewDemo.run(settings: settings, seconds: seconds)) }
+            let portrait = CommandLine.arguments.contains("--portrait")
+            Task { exit(await PreviewDemo.run(settings: settings, seconds: seconds,
+                                              portrait: portrait)) }
             return
         }
         if CommandLine.arguments.contains("--settings-test") {

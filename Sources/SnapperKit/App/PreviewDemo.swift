@@ -23,7 +23,8 @@ public enum PreviewDemo {
         for sub in view.subviews { dump(view: sub, depth: depth + 1) }
     }
 
-    public static func run(settings: SettingsStore, seconds: Double) async -> Int32 {
+    public static func run(settings: SettingsStore, seconds: Double,
+                           portrait: Bool = false) async -> Int32 {
         settings.previewDuration = 0        // hold until dismissed
         settings.showPreview = true
         settings.previewCorner = .bottomRight
@@ -43,7 +44,11 @@ public enum PreviewDemo {
             CGAssociateMouseAndMouseCursorPosition(1)
         }
 
-        guard let image = OCRSelfTest.renderPage(width: 420, height: 280) else { return 1 }
+        // A tall capture is the awkward case: the thumbnail is sized to fit its longest edge, so a
+        // portrait shot leaves the panel far narrower than the row of shortcut hints beneath it.
+        let page = portrait ? CGSize(width: 380, height: 860) : CGSize(width: 420, height: 280)
+        guard let image = OCRSelfTest.renderPage(width: page.width, height: page.height)
+        else { return 1 }
         let url = AppInfo.scratchDirectory.appendingPathComponent("preview-demo.png")
         try? ImageWriter.pngData(image, scale: 2)?.write(to: url)
 
