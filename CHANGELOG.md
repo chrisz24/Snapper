@@ -3,6 +3,23 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.4
+
+- **Snapper reopens itself after installing an update.** Installing used to quit the app and leave
+  reopening to you — whether the install had succeeded, failed, or been cancelled. The running copy
+  now waits for the new version to actually land and relaunches into it. Cancel the installer and
+  nothing changes: the copy you were using carries on.
+- **Updates can be installed from the command line**, which matters on a machine where the menu bar
+  icon is the thing you cannot see:
+
+  ```
+  Snapper.app/Contents/MacOS/Snapper --install-update
+  ```
+
+  It runs the same checks as the in-app updater — signed with a Developer ID, signed by the same
+  team as your copy, and accepted by macOS — and refuses anything that fails. Add
+  `--download-only` to verify and print a `sudo installer` command instead of opening anything.
+
 ## 0.1.3
 
 - **The menu bar icon can be switched off**, in Settings → General → Menu bar. Until now there was
