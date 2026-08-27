@@ -3,6 +3,26 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.3
+
+- **The menu bar icon can be switched off**, in Settings → General → Menu bar. Until now there was
+  no setting for it, and no way to tell "switched off" apart from macOS having quietly dropped the
+  icon for want of room — which it does once enough apps live up there, and almost always on a
+  notched display. Both look like an app that failed to start. `--menu-bar-status` answers the other
+  half by asking macOS whether it will accept a status item at all. Hiding the icon is safe because
+  opening Snapper brings up Settings, which is stated where you switch it off.
+- **Markup shapes can be placed by clicking**, not only by dragging. The first click fixes where the
+  shape starts, the pointer previews it, and a second click finishes it — so an arrow's tail lands
+  exactly where you put it rather than wherever a drag happened to begin. Clicking the same spot
+  again abandons it. Dragging works exactly as before, and freehand, text and crop still need it.
+- **Markup opens with the tool you used last** instead of resetting to the arrow every time.
+- **Closing markup keeps the edits.** Markup used to be a dead end: unless you copied or saved from
+  inside the editor, closing the window left you carrying on with the unmarked original. The
+  annotations are now flattened into the capture when the editor closes, and the preview comes back
+  with them in place, so the quick actions, text recognition and the history entry all work on what
+  you just drew. A capture still waiting in scratch is replaced; one you had already saved to your
+  own folder is left untouched, and the edited version becomes a new capture instead.
+
 ## 0.1.2
 
 - **The shortcut hints under a preview no longer collapse on a tall screenshot.** The row was held
