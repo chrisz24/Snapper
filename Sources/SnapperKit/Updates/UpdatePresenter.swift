@@ -100,8 +100,9 @@ public enum UpdatePresenter {
         }
     }
 
-    /// The package is verified by this point. Installer replaces the running app, so Snapper quits
-    /// rather than carrying on as a process whose bundle has been swapped underneath it.
+    /// The package is verified by this point. Snapper stays up while Installer works and relaunches
+    /// itself once the bundle on disk has actually been replaced — see `UpdateRelauncher` for why
+    /// that is done by watching rather than by quitting and hoping.
     private static func confirmInstall(_ package: URL, release: GitHubRelease) {
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -109,10 +110,10 @@ public enum UpdatePresenter {
         alert.informativeText = """
             The download is signed by the same developer as this copy and accepted by macOS.
 
-            Installing replaces the running app, so \(AppInfo.name) will quit. macOS will ask for \
-            your password, as it does for any installer.
+            macOS will ask for your password, as it does for any installer. \(AppInfo.name) reopens \
+            itself once the install has finished, and stays as it is if you cancel.
             """
-        alert.addButton(withTitle: "Install and Quit")
+        alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
         alert.buttons[1].keyEquivalent = "\u{1b}"
 
@@ -122,10 +123,8 @@ public enum UpdatePresenter {
         }
 
         NSWorkspace.shared.open(package)
-        // A moment for Installer to take over, so quitting does not race its launch.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            NSApp.terminate(nil)
+        UpdateRelauncher.relaunchWhenInstalled {
+            HUD.shared.show("Update installed — reopening \(AppInfo.name)")
         }
     }
 

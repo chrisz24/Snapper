@@ -373,5 +373,54 @@ enum UpdateTests {
                 Harness.expect(!url.contains("/latest"), url)
             }
         }
+
+        Harness.suite("Reopening after an update") {
+            // The relaunch hinges on noticing that the build in the bundle on disk has changed.
+            // Reading it from the wrong key or the wrong path would mean the app waits for a change
+            // it can never see, and silently never comes back.
+            func bundle(withBuild build: String?) -> URL? {
+                let root = FileManager.default.temporaryDirectory
+                    .appending(path: "snapper-relaunch-\(UUID().uuidString).app")
+                let contents = root.appending(path: "Contents")
+                guard (try? FileManager.default.createDirectory(
+                    at: contents, withIntermediateDirectories: true)) != nil else { return nil }
+                guard let build else { return root }
+                let plist: [String: Any] = ["CFBundleVersion": build, "CFBundleIdentifier": "x"]
+                guard let data = try? PropertyListSerialization.data(
+                    fromPropertyList: plist, format: .xml, options: 0),
+                      (try? data.write(to: contents.appending(path: "Info.plist"))) != nil
+                else { return nil }
+                return root
+            }
+
+            Harness.test("reads the build recorded in a bundle on disk") {
+                guard let root = bundle(withBuild: "202601011200") else { return }
+                defer { try? FileManager.default.removeItem(at: root) }
+                MainActor.assumeIsolated {
+                    Harness.expectEqual(UpdateRelauncher.installedBuild(at: root), "202601011200")
+                }
+            }
+
+            Harness.test("a replaced bundle reads as a different build") {
+                guard let before = bundle(withBuild: "1"), let after = bundle(withBuild: "2") else { return }
+                defer {
+                    try? FileManager.default.removeItem(at: before)
+                    try? FileManager.default.removeItem(at: after)
+                }
+                MainActor.assumeIsolated {
+                    Harness.expect(UpdateRelauncher.installedBuild(at: before)
+                                   != UpdateRelauncher.installedBuild(at: after),
+                                   "an install would go unnoticed")
+                }
+            }
+
+            Harness.test("a bundle with no Info.plist yields nothing rather than crashing") {
+                guard let root = bundle(withBuild: nil) else { return }
+                defer { try? FileManager.default.removeItem(at: root) }
+                MainActor.assumeIsolated {
+                    Harness.expect(UpdateRelauncher.installedBuild(at: root) == nil)
+                }
+            }
+        }
     }
 }

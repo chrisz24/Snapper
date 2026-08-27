@@ -86,6 +86,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             Task { exit(await SelfTest.run(settings: settings)) }
             return
         }
+        if CommandLine.arguments.contains("--install-update") {
+            let downloadOnly = CommandLine.arguments.contains("--download-only")
+            Task {
+                exit(await UpdateInstallCLI.run(settings: settings, downloadOnly: downloadOnly))
+            }
+            return
+        }
         if CommandLine.arguments.contains("--update-check") {
             Task { exit(await UpdateSelfTest.run(settings: settings)) }
             return
