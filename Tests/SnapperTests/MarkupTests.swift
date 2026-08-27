@@ -106,5 +106,100 @@ enum MarkupTests {
                 Harness.expect(output != nil)
             }
         }
+
+        Harness.suite("Markup — placing a shape by clicking") {
+            guard let base = makeImage(width: 200, height: 120) else { return }
+
+            func model(_ tool: MarkupTool) -> MarkupModel {
+                MainActor.assumeIsolated {
+                    let m = MarkupModel(base: base, scale: 2)
+                    m.tool = tool
+                    return m
+                }
+            }
+
+            Harness.test("the first click anchors the shape without committing it") {
+                MainActor.assumeIsolated {
+                    let m = model(.arrow)
+                    m.handleClick(at: CGPoint(x: 20, y: 30))
+                    Harness.expect(m.anchor == CGPoint(x: 20, y: 30), "anchor not set")
+                    Harness.expect(m.elements.isEmpty, "committed too early")
+                    Harness.expect(m.inProgress != nil, "nothing to see while it waits")
+                }
+            }
+
+            Harness.test("the second click commits it from the anchor") {
+                MainActor.assumeIsolated {
+                    let m = model(.arrow)
+                    m.handleClick(at: CGPoint(x: 20, y: 30))
+                    m.handleClick(at: CGPoint(x: 90, y: 80))
+                    Harness.expectEqual(m.elements.count, 1)
+                    // The tail is where the first click landed — the whole point of the feature.
+                    Harness.expect(m.elements.first?.points.first == CGPoint(x: 20, y: 30),
+                                   "the shape does not start where it was anchored")
+                    Harness.expect(m.elements.first?.points.last == CGPoint(x: 90, y: 80))
+                    Harness.expect(m.anchor == nil, "anchor left armed after committing")
+                    Harness.expect(m.inProgress == nil)
+                }
+            }
+
+            Harness.test("the preview follows the pointer between the two clicks") {
+                MainActor.assumeIsolated {
+                    let m = model(.line)
+                    m.handleClick(at: CGPoint(x: 10, y: 10))
+                    m.moveAnchoredEnd(to: CGPoint(x: 60, y: 40))
+                    Harness.expect(m.inProgress?.points.last == CGPoint(x: 60, y: 40))
+                    Harness.expect(m.elements.isEmpty, "a preview is not a commitment")
+                }
+            }
+
+            Harness.test("clicking the same spot again abandons it") {
+                MainActor.assumeIsolated {
+                    let m = model(.rectangle)
+                    m.handleClick(at: CGPoint(x: 40, y: 40))
+                    m.handleClick(at: CGPoint(x: 41, y: 41))
+                    Harness.expect(m.anchor == nil, "still armed")
+                    Harness.expect(m.elements.isEmpty, "committed a shape too small to see")
+                }
+            }
+
+            Harness.test("changing tool abandons a half-placed shape") {
+                MainActor.assumeIsolated {
+                    let m = model(.arrow)
+                    m.handleClick(at: CGPoint(x: 15, y: 15))
+                    m.tool = .ellipse
+                    Harness.expect(m.anchor == nil, "the anchor outlived its tool")
+                    Harness.expect(m.inProgress == nil)
+                }
+            }
+
+            Harness.test("freehand and text are not placed this way") {
+                MainActor.assumeIsolated {
+                    for tool in [MarkupTool.freehand, .text] {
+                        let m = model(tool)
+                        m.handleClick(at: CGPoint(x: 20, y: 20))
+                        Harness.expect(m.anchor == nil, "\(tool.rawValue) should need a drag")
+                    }
+                }
+            }
+
+            Harness.test("crop is left to dragging") {
+                // Its preview and its committed value are the same state, so a half-placed crop
+                // would look exactly like a real one.
+                Harness.expect(!MarkupTool.crop.supportsClickAnchor)
+                Harness.expect(MarkupTool.arrow.supportsClickAnchor)
+            }
+
+            Harness.test("an untouched image reports nothing to carry back") {
+                MainActor.assumeIsolated {
+                    let m = model(.arrow)
+                    Harness.expect(!m.hasEdits)
+                    m.handleClick(at: CGPoint(x: 10, y: 10))
+                    Harness.expect(!m.hasEdits, "an unfinished shape is not an edit")
+                    m.handleClick(at: CGPoint(x: 80, y: 60))
+                    Harness.expect(m.hasEdits, "a committed shape should be carried back")
+                }
+            }
+        }
     }
 }

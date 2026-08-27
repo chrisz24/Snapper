@@ -7,8 +7,6 @@ struct MarkupView: View {
     var onSave: (CGImage) -> Void
     var onClose: () -> Void
 
-    /// Pixelating the whole image once is far cheaper than doing it per redaction per frame.
-    @State private var pixelated: CGImage?
     @State private var rendered: CGImage?
 
     var body: some View {
@@ -19,10 +17,7 @@ struct MarkupView: View {
             Divider()
             footer
         }
-        .onAppear {
-            pixelated = MarkupRenderer.pixelate(model.base)
-            rerender()
-        }
+        .onAppear { rerender() }
         .onChange(of: model.elements) { _, _ in rerender() }
         .onChange(of: model.inProgress) { _, _ in rerender() }
         .onChange(of: model.cropRect) { _, _ in rerender() }
@@ -106,13 +101,28 @@ struct MarkupView: View {
             .contentShape(Rectangle())
             .gesture(dragGesture(fitted: fitted))
             .onTapGesture { location in
-                guard model.tool == .text else { return }
-                model.pendingTextOrigin = imagePoint(from: location, fitted: fitted)
-                model.pendingText = ""
+                let point = imagePoint(from: location, fitted: fitted)
+                guard model.tool != .text else {
+                    model.pendingTextOrigin = point
+                    model.pendingText = ""
+                    return
+                }
+                model.handleClick(at: point)
+            }
+            // Between the two clicks the shape follows the pointer, so it is placed by eye rather
+            // than by guessing where the second click will land.
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                guard model.anchor != nil, case .active(let location) = phase else { return }
+                model.moveAnchoredEnd(to: imagePoint(from: location, fitted: fitted))
             }
             .overlay(alignment: .topLeading) {
                 if let origin = model.pendingTextOrigin {
                     textEntry(at: origin, fitted: fitted)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if let anchor = model.anchor {
+                    anchorMarker(at: anchor, fitted: fitted)
                 }
             }
         }
@@ -124,6 +134,17 @@ struct MarkupView: View {
             .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
             .frame(width: view.width, height: view.height)
             .offset(x: view.minX, y: view.minY)
+            .allowsHitTesting(false)
+    }
+
+    /// Marks where a click-placed shape starts, so an armed anchor is never invisible.
+    private func anchorMarker(at point: CGPoint, fitted: CGRect) -> some View {
+        let view = viewPoint(from: point, fitted: fitted)
+        return Circle()
+            .fill(Color.white.opacity(0.75))
+            .overlay(Circle().strokeBorder(Color(model.color.nsColor), lineWidth: 2))
+            .frame(width: 10, height: 10)
+            .offset(x: view.x - 5, y: view.y - 5)
             .allowsHitTesting(false)
     }
 
@@ -152,6 +173,7 @@ struct MarkupView: View {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
                 guard model.tool != .text else { return }
+                model.cancelAnchor()
                 let start = imagePoint(from: value.startLocation, fitted: fitted)
                 let current = imagePoint(from: value.location, fitted: fitted)
 
@@ -207,6 +229,18 @@ struct MarkupView: View {
                 Button("Remove Crop") { model.setCrop(nil) }
             }
             Spacer()
+            // Click-to-place is not a gesture anyone guesses at, so it is spelled out — and once a
+            // shape is armed, the way out of it is worth stating too.
+            if model.anchor != nil {
+                Text("Click again to finish the \(model.tool.title.lowercased()), or click the same spot to cancel")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if model.tool.supportsClickAnchor {
+                Text("Drag, or click once to place the start point")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
             Text("\(model.elements.count) annotation\(model.elements.count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -233,19 +267,11 @@ struct MarkupView: View {
             elements: model.elements,
             inProgress: model.inProgress,
             cropRect: nil, // the crop is previewed as a marquee, applied only on export
-            pixelated: pixelated
+            pixelated: model.pixelated
         )
     }
 
-    private func flattened() -> CGImage? {
-        MarkupRenderer.render(
-            base: model.base,
-            elements: model.elements,
-            inProgress: nil,
-            cropRect: model.cropRect,
-            pixelated: pixelated
-        )
-    }
+    private func flattened() -> CGImage? { model.flattened() }
 
     // MARK: - Coordinate mapping
 

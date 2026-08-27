@@ -37,6 +37,11 @@ public enum MarkupTool: String, CaseIterable, Identifiable, Sendable {
 
     /// Tools defined by a start and end point rather than a free path.
     var isDragDefined: Bool { self != .freehand && self != .text }
+
+    /// Tools that can be placed by clicking a start point and then clicking an end point, instead
+    /// of holding the button down. Crop is excluded on purpose: its preview and its committed value
+    /// are the same piece of state, so a half-placed crop would be indistinguishable from a real one.
+    public var supportsClickAnchor: Bool { isDragDefined && self != .crop }
 }
 
 /// Codable colour, so markup state can be persisted later without dragging NSColor along.
@@ -105,11 +110,19 @@ public struct MarkupElement: Identifiable, Equatable, Sendable {
 @MainActor
 public final class MarkupModel: ObservableObject {
     @Published public var elements: [MarkupElement] = []
-    @Published public var tool: MarkupTool = .arrow
+    @Published public var tool: MarkupTool = .arrow {
+        didSet {
+            // A half-placed shape belongs to the tool that started it.
+            guard tool != oldValue else { return }
+            cancelAnchor()
+        }
+    }
     @Published public var color: MarkupColor = .red
     @Published public var lineWidth: CGFloat = 4
     @Published public var inProgress: MarkupElement?
     @Published public var cropRect: CGRect?
+    /// Where a click-placed shape starts, while it waits for the click that finishes it.
+    @Published public var anchor: CGPoint?
     /// Set while a text element is being typed.
     @Published public var pendingTextOrigin: CGPoint?
     @Published public var pendingText: String = ""
@@ -117,6 +130,8 @@ public final class MarkupModel: ObservableObject {
     public let base: CGImage
     public let scale: CGFloat
 
+    private var pixelatedCache: CGImage?
+    private var hasPixelated = false
     private var undoStack: [[MarkupElement]] = []
     private var redoStack: [[MarkupElement]] = []
 
@@ -130,6 +145,62 @@ public final class MarkupModel: ObservableObject {
 
     public var imageSize: CGSize {
         CGSize(width: base.width, height: base.height)
+    }
+
+    /// Anything worth carrying back to the capture.
+    public var hasEdits: Bool { !elements.isEmpty || cropRect != nil }
+
+    /// Click once to fix where the shape starts, move, then click again to finish it — for placing
+    /// an arrow's tail exactly without holding the button down. Dragging still works as before.
+    public func handleClick(at point: CGPoint) {
+        guard tool.supportsClickAnchor else { return }
+
+        guard let start = anchor else {
+            anchor = point
+            inProgress = MarkupElement(tool: tool, points: [point, point],
+                                       color: color, lineWidth: lineWidth)
+            return
+        }
+
+        let element = MarkupElement(tool: tool, points: [start, point],
+                                    color: color, lineWidth: lineWidth)
+        guard element.rect.width >= 3 || element.rect.height >= 3 else {
+            // Clicking the same spot again means "never mind", rather than committing a shape too
+            // small to see or to select afterwards.
+            cancelAnchor()
+            return
+        }
+        commit(element)
+        anchor = nil
+    }
+
+    /// Follows the pointer between the two clicks, so the shape is previewed before it is placed.
+    public func moveAnchoredEnd(to point: CGPoint) {
+        guard let anchor, tool.supportsClickAnchor else { return }
+        inProgress = MarkupElement(tool: tool, points: [anchor, point],
+                                   color: color, lineWidth: lineWidth)
+    }
+
+    public func cancelAnchor() {
+        guard anchor != nil else { return }
+        anchor = nil
+        inProgress = nil
+    }
+
+    /// A pre-pixelated copy of the base image, for drawing redactions. Computed once, here rather
+    /// than in the editor, so the window controller can flatten on close without the view's help.
+    public var pixelated: CGImage? {
+        if !hasPixelated {
+            pixelatedCache = MarkupRenderer.pixelate(base)
+            hasPixelated = true
+        }
+        return pixelatedCache
+    }
+
+    /// The image with every annotation drawn in and the crop applied.
+    public func flattened() -> CGImage? {
+        MarkupRenderer.render(base: base, elements: elements, inProgress: nil,
+                              cropRect: cropRect, pixelated: pixelated)
     }
 
     public func commit(_ element: MarkupElement) {

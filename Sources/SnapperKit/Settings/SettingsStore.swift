@@ -11,6 +11,9 @@ public final class SettingsStore: ObservableObject {
 
     // MARK: - General
 
+    /// The menu bar icon. Hiding it leaves the shortcuts working and Settings reachable by opening
+    /// the app again, which is the only way back — so the interface has to say so.
+    @Published public var showMenuBarIcon: Bool = true { didSet { persist(showMenuBarIcon, .showMenuBarIcon) } }
     @Published public var showPreview: Bool = true { didSet { persist(showPreview, .showPreview) } }
     @Published public var previewCorner: PreviewCorner = .bottomRight { didSet { persist(previewCorner.rawValue, .previewCorner) } }
     /// Seconds the preview stays up. 0 means "until dismissed".
@@ -60,6 +63,10 @@ public final class SettingsStore: ObservableObject {
 
     // MARK: - History
 
+    /// The tool markup opens with, so a session carries on with whatever was used last rather than
+    /// resetting to the arrow every time. Not shown in Settings; it is remembered state, not a
+    /// preference to be set.
+    @Published public var lastMarkupTool: String = MarkupTool.arrow.rawValue { didSet { persist(lastMarkupTool, .lastMarkupTool) } }
     @Published public var historyEnabled: Bool = true { didSet { persist(historyEnabled, .historyEnabled) } }
     @Published public var historyLimit: Int = 50 { didSet { persist(historyLimit, .historyLimit) } }
 
@@ -91,6 +98,7 @@ public final class SettingsStore: ObservableObject {
     // MARK: - Persistence
 
     private enum Key: String {
+        case showMenuBarIcon
         case showPreview, previewCorner, previewDuration, previewSize, playCaptureSound, showHUD, launchAtLogin
         case hasCompletedSetup
         case saveDirectoryPath, autoSaveToDisk, filenameTemplate, imageFormat, includeCursor
@@ -101,6 +109,7 @@ public final class SettingsStore: ObservableObject {
         case quickActionActivation, releaseOnAppSwitch
         case historyEnabled, historyLimit
         case automaticUpdateChecks, includePrereleaseUpdates, lastUpdateCheck, skippedUpdateVersion
+        case lastMarkupTool
     }
 
     private func persist(_ value: Any, _ key: Key) {
@@ -125,6 +134,7 @@ public final class SettingsStore: ObservableObject {
             defaults.object(forKey: k.rawValue) as? [String] ?? fallback
         }
 
+        showMenuBarIcon = bool(.showMenuBarIcon, true)
         showPreview = bool(.showPreview, true)
         previewCorner = PreviewCorner(rawValue: string(.previewCorner, "")) ?? .bottomRight
         previewDuration = double(.previewDuration, 5)
@@ -159,6 +169,7 @@ public final class SettingsStore: ObservableObject {
         quickActionActivation = QuickActionActivation(rawValue: string(.quickActionActivation, "")) ?? .global
         releaseOnAppSwitch = bool(.releaseOnAppSwitch, true)
 
+        lastMarkupTool = string(.lastMarkupTool, MarkupTool.arrow.rawValue)
         historyEnabled = bool(.historyEnabled, true)
         historyLimit = int(.historyLimit, 50)
 

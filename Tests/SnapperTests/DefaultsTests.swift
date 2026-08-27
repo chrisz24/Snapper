@@ -41,6 +41,16 @@ enum DefaultsTests {
                 Harness.expectEqual(Set(all).count, all.count, "duplicate default shortcut")
             }
 
+            Harness.test("the menu bar icon is shown by default") {
+                // Off by default would make a fresh install look like it had never launched.
+                let suite = "snapper.tests.menubar.\(UUID().uuidString)"
+                guard let defaults = UserDefaults(suiteName: suite) else { return }
+                defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+                MainActor.assumeIsolated {
+                    Harness.expect(SettingsStore(defaults: defaults).showMenuBarIcon)
+                }
+            }
+
             Harness.test("captures are not saved automatically by default") {
                 let suite = "snapper.tests.settings.\(UUID().uuidString)"
                 guard let defaults = UserDefaults(suiteName: suite) else { return }

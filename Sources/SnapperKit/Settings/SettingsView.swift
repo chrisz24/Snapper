@@ -121,6 +121,25 @@ private struct GeneralPane: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Show the menu bar icon", isOn: $settings.showMenuBarIcon)
+            } header: {
+                Text("Menu bar")
+            } footer: {
+                if settings.showMenuBarIcon {
+                    Text("The icon is where the capture history, setup and this window live. "
+                         + "macOS hides menu bar icons it has no room for, which looks the same as "
+                         + "this being switched off.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("The shortcuts keep working. Open \(AppInfo.name) from the Applications "
+                          + "folder or Spotlight to get back to Settings — that is the only way in "
+                          + "while the icon is hidden.",
+                          systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
                 Toggle("Show a preview after each capture", isOn: $settings.showPreview)
                 Picker("Corner", selection: $settings.previewCorner) {
                     ForEach(PreviewCorner.allCases, id: \.self) { Text($0.displayName).tag($0) }

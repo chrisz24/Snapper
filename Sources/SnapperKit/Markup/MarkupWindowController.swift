@@ -10,6 +10,14 @@ public final class MarkupWindowController: NSObject, NSWindowDelegate {
     /// The edited image was saved somewhere; callers update their copy of the capture.
     public var onSaved: ((URL) -> Void)?
 
+    /// The editor closed with annotations on the image, so the working capture now *is* the edited
+    /// one. Closing used to throw the edits away, which made markup a dead end unless you exported
+    /// from inside it — the capture you carried on with was still the unmarked original.
+    public var onEdited: ((CaptureResult) -> Void)?
+
+    /// What is being edited, so closing by any route can finish the job.
+    private var session: (model: MarkupModel, result: CaptureResult)?
+
     public init(settings: SettingsStore) {
         self.settings = settings
         super.init()
@@ -19,6 +27,9 @@ public final class MarkupWindowController: NSObject, NSWindowDelegate {
         close()
 
         let model = MarkupModel(base: result.image, scale: result.scale)
+        // Pick up where the last session left off.
+        model.tool = MarkupTool(rawValue: settings.lastMarkupTool) ?? .arrow
+        session = (model, result)
         let view = MarkupView(
             model: model,
             onCopy: { [weak self] image in
@@ -51,12 +62,51 @@ public final class MarkupWindowController: NSObject, NSWindowDelegate {
     }
 
     public func close() {
+        finishSession()
         window?.orderOut(nil)
         window = nil
         NSApp.setActivationPolicy(.accessory)
     }
 
+    /// Writes the annotations into the capture being edited and remembers the tool, whichever way
+    /// the editor was closed — the button, the window's own close box, or an export.
+    private func finishSession() {
+        guard let (model, result) = session else { return }
+        session = nil
+        settings.lastMarkupTool = model.tool.rawValue
+
+        guard model.hasEdits, let edited = model.flattened() else { return }
+
+        // A capture still in scratch is a working copy, so the edits replace it. One the user has
+        // already saved somewhere is theirs: that file is left exactly as it is and the edited
+        // version becomes a new scratch capture instead.
+        let destination = result.isTemporary
+            ? result.fileURL
+            : AppInfo.scratchDirectory
+                .appendingPathComponent(result.fileURL.deletingPathExtension().lastPathComponent
+                                        + " marked up")
+                .appendingPathExtension(result.fileURL.pathExtension)
+
+        do {
+            try ImageWriter.write(edited, to: destination, format: settings.imageFormat,
+                                  scale: result.scale)
+        } catch {
+            HUD.shared.show("Could not keep the markup: \(error.localizedDescription)",
+                            style: .failure, duration: 3)
+            return
+        }
+
+        var updated = result
+        updated.fileURL = destination
+        updated.image = edited
+        // Temporary either way: the edits either replaced a scratch file, or went into a new one
+        // beside the saved original. Neither is a file the user has chosen a home for yet.
+        updated.isTemporary = true
+        onEdited?(updated)
+    }
+
     public func windowWillClose(_ notification: Notification) {
+        finishSession()
         window = nil
         NSApp.setActivationPolicy(.accessory)
     }

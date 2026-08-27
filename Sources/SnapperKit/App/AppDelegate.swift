@@ -23,6 +23,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     private lazy var markup = MarkupWindowController(settings: settings)
     private lazy var updates = UpdateChecker(settings: settings)
 
+    private var cancellables = Set<AnyCancellable>()
     private var globalTokens: [HotkeyToken] = []
     /// The most recent capture, so "copy text from last capture" has something to work on.
     private var lastCapture: CaptureResult?
@@ -34,6 +35,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
         if CommandLine.arguments.contains("--ocr-test") {
             Task { exit(await OCRSelfTest.run()) }
             return
+        }
+        if CommandLine.arguments.contains("--menu-bar-status") {
+            print(MenuBarStatus.report(settings: settings))
+            exit(0)
         }
         if CommandLine.arguments.contains("--uninstall-plan") {
             Uninstaller.printPlan()
@@ -86,7 +91,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             return
         }
 
-        setUpStatusItem()
+        setStatusItem(visible: settings.showMenuBarIcon)
         wire()
         registerGlobalHotkeys()
 
@@ -148,6 +153,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
     // MARK: - Wiring
 
     private func wire() {
+        // dropFirst because subscribing to a @Published delivers the current value straight away,
+        // and the launch path has already dealt with that — without it, starting up with the icon
+        // hidden would announce it as though the user had just switched it off.
+        settings.$showMenuBarIcon
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] visible in
+                guard let self else { return }
+                self.setStatusItem(visible: visible)
+                if !visible {
+                    // The only way back to Settings, so it is worth saying out loud rather than
+                    // leaving someone to discover that the app has apparently vanished.
+                    HUD.shared.show("Menu bar icon hidden — open \(AppInfo.name) again for Settings",
+                                    style: .info, duration: 4)
+                }
+            }
+            .store(in: &cancellables)
+
         coordinator.onCaptured = { [weak self] result in
             guard let self else { return }
             self.lastCapture = result
@@ -200,6 +223,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             // The editor takes focus, so the preview's key grab has to end first.
             self.preview.dismiss()
             self.markup.open(result)
+        }
+
+        // Closing the editor hands the marked-up capture back, so everything downstream — the
+        // preview's quick actions, "copy text from last capture", the history entry — works on what
+        // the user just drew rather than on the original.
+        markup.onEdited = { [weak self] edited in
+            guard let self else { return }
+            self.lastCapture = edited
+            if self.settings.historyEnabled {
+                self.history.record(edited, limit: self.settings.historyLimit)
+            }
+            // Back to where they were before markup was invoked, with the edits in place.
+            self.preview.show(edited)
         }
 
         markup.onSaved = { [weak self] url in
@@ -269,7 +305,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
 
     // MARK: - Menu bar
 
-    private func setUpStatusItem() {
+    /// Adds or removes the menu bar icon. Removing it rather than leaving an invisible item behind
+    /// keeps the menu bar's spacing honest for everything else sitting in it.
+    private func setStatusItem(visible: Bool) {
+        guard visible else {
+            if let statusItem {
+                NSStatusBar.system.removeStatusItem(statusItem)
+                self.statusItem = nil
+            }
+            return
+        }
+        guard statusItem == nil else { return }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(
             systemSymbolName: "camera.viewfinder",
