@@ -3,6 +3,14 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.5
+
+- **Reopening after an update now works wherever the app is kept.** 0.1.4 watched the running copy's
+  own bundle for the new version, but an update installs to /Applications — so a copy started from
+  somewhere else waited for a change that was landing at a different path and never reopened, which
+  was the one thing that change existed to fix. It now also watches where the installer puts the
+  app, and reopens whichever copy the update actually replaced.
+
 ## 0.1.4
 
 - **Snapper reopens itself after installing an update.** Installing used to quit the app and leave
