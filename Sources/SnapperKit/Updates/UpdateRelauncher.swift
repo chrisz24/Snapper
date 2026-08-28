@@ -36,11 +36,42 @@ public enum UpdateRelauncher {
         return info["CFBundleVersion"] as? String
     }
 
-    /// Starts watching. Does nothing outside an app bundle, where there is nothing to replace.
+    /// Where the installer package puts the app. Pinned there by `make-pkg.sh`, on purpose, so an
+    /// install cannot silently overwrite a build kept somewhere else.
+    public static var installLocation: URL {
+        URL(fileURLWithPath: "/Applications").appending(path: "\(AppInfo.name).app")
+    }
+
+    /// The bundles worth watching, given where this copy runs from.
+    ///
+    /// Usually one: the running copy is the copy the installer replaces. It is two when they differ
+    /// — a copy started from ~/Applications, or straight out of a build directory — and watching
+    /// only the running bundle would then wait for a change that lands somewhere else entirely.
+    ///
+    /// Pure, so the suite can check the case this exists for.
+    public static func bundlesToWatch(running: URL, installLocation: URL) -> [URL] {
+        var bundles: [URL] = []
+        if running.pathExtension == "app" {
+            bundles.append(running)
+        }
+        if running.standardizedFileURL != installLocation.standardizedFileURL {
+            bundles.append(installLocation)
+        }
+        return bundles
+    }
+
+    /// Starts watching for an installed update.
     public static func relaunchWhenInstalled(onRelaunch: (() -> Void)? = nil) {
-        let bundle = Bundle.main.bundleURL
-        guard bundle.pathExtension == "app", !watching else { return }
-        guard let before = installedBuild(at: bundle) else { return }
+        guard !watching else { return }
+        let bundles = bundlesToWatch(running: Bundle.main.bundleURL,
+                                     installLocation: installLocation)
+        guard !bundles.isEmpty else { return }
+
+        // Recorded per bundle. A location that does not exist yet reads as nil, and an install
+        // making it appear counts as the change — that is exactly the case where the running copy
+        // lives elsewhere and would otherwise never notice.
+        var before: [URL: String?] = [:]
+        for bundle in bundles { before[bundle] = installedBuild(at: bundle) }
 
         watching = true
         Task { @MainActor in
@@ -49,13 +80,19 @@ public enum UpdateRelauncher {
                 try? await Task.sleep(for: interval)
                 waited += interval
 
-                guard let now = installedBuild(at: bundle), now != before else { continue }
-                watching = false
-                onRelaunch?()
-                // A beat so the message is on screen before the process goes.
-                try? await Task.sleep(for: .milliseconds(700))
-                PermissionsChecker.relaunch()
-                return
+                for bundle in bundles {
+                    let now = installedBuild(at: bundle)
+                    guard now != before[bundle] ?? nil, now != nil else { continue }
+                    watching = false
+                    onRelaunch?()
+                    // A beat so the message is on screen before the process goes.
+                    try? await Task.sleep(for: .milliseconds(700))
+                    // The bundle that changed, not the one that was running: after an install to
+                    // /Applications those are different, and reopening the running copy would
+                    // start the old version over again.
+                    PermissionsChecker.relaunch(bundle)
+                    return
+                }
             }
             watching = false
         }

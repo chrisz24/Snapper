@@ -414,6 +414,47 @@ enum UpdateTests {
                 }
             }
 
+            Harness.test("a copy running from /Applications watches only itself") {
+                let installed = URL(fileURLWithPath: "/Applications/Snapper.app")
+                MainActor.assumeIsolated {
+                    let watched = UpdateRelauncher.bundlesToWatch(running: installed,
+                                                                  installLocation: installed)
+                    Harness.expectEqual(watched.count, 1, "watching the same bundle twice")
+                }
+            }
+
+            Harness.test("a copy running elsewhere also watches where the installer puts it") {
+                // The bug this exists for: an update installs to /Applications, so a copy started
+                // from ~/Applications would otherwise wait for its own bundle to change and never
+                // come back.
+                let running = URL(fileURLWithPath: NSHomeDirectory() + "/Applications/Snapper.app")
+                let installed = URL(fileURLWithPath: "/Applications/Snapper.app")
+                MainActor.assumeIsolated {
+                    let watched = UpdateRelauncher.bundlesToWatch(running: running,
+                                                                  installLocation: installed)
+                    Harness.expect(watched.contains(installed), "would never see the install")
+                    Harness.expect(watched.contains(running), "stopped watching itself")
+                }
+            }
+
+            Harness.test("a build directory still watches the install location") {
+                let running = URL(fileURLWithPath: "/tmp/build/debug")
+                let installed = URL(fileURLWithPath: "/Applications/Snapper.app")
+                MainActor.assumeIsolated {
+                    let watched = UpdateRelauncher.bundlesToWatch(running: running,
+                                                                  installLocation: installed)
+                    Harness.expectEqual(watched, [installed],
+                                        "a build directory is not something an install replaces")
+                }
+            }
+
+            Harness.test("the install location matches where the package puts the app") {
+                MainActor.assumeIsolated {
+                    Harness.expectEqual(UpdateRelauncher.installLocation.path,
+                                        "/Applications/\(AppInfo.name).app")
+                }
+            }
+
             Harness.test("a bundle with no Info.plist yields nothing rather than crashing") {
                 guard let root = bundle(withBuild: nil) else { return }
                 defer { try? FileManager.default.removeItem(at: root) }

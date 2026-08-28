@@ -32,8 +32,11 @@ public enum PermissionsChecker {
     }
 
     /// Relaunches the app, which is how a freshly granted Screen Recording permission takes hold.
-    public static func relaunch() {
-        guard let bundleURL = Bundle.main.bundleURL as URL? else { return }
+    ///
+    /// Takes the bundle to open because it is not always this one: an update installs to
+    /// /Applications, so a copy running from anywhere else has to hand over to the new bundle
+    /// rather than start itself again.
+    public static func relaunch(_ bundleURL: URL = Bundle.main.bundleURL) {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in
