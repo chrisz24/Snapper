@@ -34,12 +34,27 @@ public enum Uninstaller {
     private static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     private static var id: String { AppInfo.bundleIdentifier }
 
-    /// Every file location the app writes to, in the order they are removed.
+    /// The app's own folder, cleared out rather than removed outright — see `preservedInSupport`.
+    private static var supportDirectory: URL {
+        home.appending(path: "Library/Application Support/\(id)")
+    }
+
+    /// Folders inside the support directory that are *not* app data and must survive an uninstall.
+    ///
+    /// `scripts/setup-developer-id.sh` keeps the Developer ID private keys and the signing
+    /// keychains' passwords here, because there is nowhere better for them on a machine with no
+    /// Xcode. Deleting them is not a tidy-up: the passwords are randomly generated and stored
+    /// nowhere else, so the keychains can never be unlocked again, and the private keys cannot be
+    /// reconstructed — the certificates have to be re-issued by Apple. That happened once, to the
+    /// author of this file, which is why it is a list and not a comment.
+    ///
+    /// No end user has either folder, so keeping them costs an ordinary uninstall nothing.
+    public static let preservedInSupport = ["signing", "distribution"]
+
+    /// Every other file location the app writes to, in the order they are removed.
     private static var dataLocations: [(label: String, detail: String, url: URL)] {
         let library = home.appending(path: "Library")
         return [
-            ("Captures, history and thumbnails", "Application Support",
-             library.appending(path: "Application Support/\(id)")),
             ("Settings", "Preferences",
              library.appending(path: "Preferences/\(id).plist")),
             ("Caches", "Caches",
@@ -53,7 +68,8 @@ public enum Uninstaller {
 
     /// What removal would cover, for a confirmation that lists it rather than asking for trust.
     public static func plan() -> [Item] {
-        var items = dataLocations.map { location in
+        var items: [Item] = [supportItem]
+        items += dataLocations.map { location in
             let exists = FileManager.default.fileExists(atPath: location.url.path)
             return Item(label: location.label,
                         detail: exists ? "\(location.detail) — \(size(of: location.url))"
@@ -84,6 +100,55 @@ public enum Uninstaller {
                           url: bundle,
                           exists: isRunningFromAppBundle))
         return items
+    }
+
+    /// The support directory's row, which says outright that credentials are kept.
+    private static var supportItem: Item {
+        let exists = FileManager.default.fileExists(atPath: supportDirectory.path)
+        let kept = preservedFolders()
+        var detail = exists ? "Application Support — \(size(of: supportDirectory))"
+                            : "Application Support — nothing stored"
+        if !kept.isEmpty {
+            detail += " · keeping \(kept.formatted(.list(type: .and)))"
+        }
+        return Item(label: "Captures, history and thumbnails",
+                    detail: detail,
+                    url: supportDirectory,
+                    exists: exists)
+    }
+
+    /// Which of the preserved folders are actually present.
+    public static func preservedFolders(in directory: URL? = nil) -> [String] {
+        let root = directory ?? supportDirectory
+        return preservedInSupport.filter {
+            FileManager.default.fileExists(atPath: root.appending(path: $0).path)
+        }
+    }
+
+    /// Empties the support directory of app data, leaving the credential folders alone. Takes the
+    /// directory so the suite can prove the exclusion on a copy rather than on the real one.
+    @discardableResult
+    public static func clearSupportDirectory(_ directory: URL) -> (removed: [String], kept: [String]) {
+        let manager = FileManager.default
+        guard let entries = try? manager.contentsOfDirectory(atPath: directory.path) else {
+            return ([], [])
+        }
+        var removed: [String] = []
+        var kept: [String] = []
+        for entry in entries {
+            if preservedInSupport.contains(entry) {
+                kept.append(entry)
+                continue
+            }
+            if (try? manager.removeItem(at: directory.appending(path: entry))) != nil {
+                removed.append(entry)
+            }
+        }
+        // Nothing worth keeping and nothing left: take the folder itself too.
+        if kept.isEmpty, (try? manager.contentsOfDirectory(atPath: directory.path))?.isEmpty == true {
+            try? manager.removeItem(at: directory)
+        }
+        return (removed, kept)
     }
 
     /// False for a development build running out of `.build`, where there is no app to remove.
@@ -130,6 +195,20 @@ public enum Uninstaller {
             case .disabled: report.removed.append("Login item unregistered")
             case .failed(let why): report.failed.append("Login item: \(why)")
             default: report.failed.append("Login item could not be unregistered")
+            }
+        }
+
+        if FileManager.default.fileExists(atPath: supportDirectory.path) {
+            let outcome = clearSupportDirectory(supportDirectory)
+            if !outcome.removed.isEmpty {
+                report.removed.append("Captures, history and thumbnails")
+            }
+            if !outcome.kept.isEmpty {
+                report.manual.append(
+                    "Left your signing credentials in place — \(supportDirectory.path) still holds "
+                    + "\(outcome.kept.formatted(.list(type: .and))). They are not app data, and "
+                    + "deleting them means re-issuing certificates from Apple. Remove them by hand "
+                    + "if you really mean to.")
             }
         }
 
