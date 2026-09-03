@@ -54,7 +54,9 @@ public final class SettingsStore: ObservableObject {
     @Published public var autoCopyOCR: Bool = true { didSet { persist(autoCopyOCR, .autoCopyOCR) } }
     @Published public var showOCRReview: Bool = false { didSet { persist(showOCRReview, .showOCRReview) } }
     /// Whether an OCR capture also keeps the image around (preview + history).
-    @Published public var keepOCRImage: Bool = true { didSet { persist(keepOCRImage, .keepOCRImage) } }
+    /// Whether a text grab also leaves the captured image on screen. Off: ⇧⌘O is asked for text,
+    /// and a preview of a screenshot nobody asked for is a surprise, not a feature.
+    @Published public var keepOCRImage: Bool = false { didSet { persist(keepOCRImage, .keepOCRImage) } }
 
     // MARK: - Quick actions
 
@@ -164,7 +166,7 @@ public final class SettingsStore: ObservableObject {
         enhanceSmallSelections = bool(.enhanceSmallSelections, true)
         autoCopyOCR = bool(.autoCopyOCR, true)
         showOCRReview = bool(.showOCRReview, false)
-        keepOCRImage = bool(.keepOCRImage, true)
+        keepOCRImage = bool(.keepOCRImage, false)
 
         quickActionActivation = QuickActionActivation(rawValue: string(.quickActionActivation, "")) ?? .global
         releaseOnAppSwitch = bool(.releaseOnAppSwitch, true)

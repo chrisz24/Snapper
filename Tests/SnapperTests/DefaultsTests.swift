@@ -51,6 +51,20 @@ enum DefaultsTests {
                 }
             }
 
+            Harness.test("a text grab does not keep the image by default") {
+                // ⇧⌘O is asked for text. Previewing a screenshot nobody asked for reads as the app
+                // having taken one behind your back.
+                let suite = "snapper.tests.ocr.\(UUID().uuidString)"
+                guard let defaults = UserDefaults(suiteName: suite) else { return }
+                defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
+                MainActor.assumeIsolated {
+                    let store = SettingsStore(defaults: defaults)
+                    Harness.expect(!store.keepOCRImage)
+                    // The text itself is still the point, so copying stays on.
+                    Harness.expect(store.autoCopyOCR)
+                }
+            }
+
             Harness.test("captures are not saved automatically by default") {
                 let suite = "snapper.tests.settings.\(UUID().uuidString)"
                 guard let defaults = UserDefaults(suiteName: suite) else { return }

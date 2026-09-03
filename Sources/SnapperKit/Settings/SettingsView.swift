@@ -321,10 +321,17 @@ private struct TextPane: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("After reading") {
+            Section {
                 Toggle("Copy the text straight to the clipboard", isOn: $settings.autoCopyOCR)
                 Toggle("Show the text first so I can edit it", isOn: $settings.showOCRReview)
-                Toggle("Also show the image preview", isOn: $settings.keepOCRImage)
+                Toggle("Also keep the image, with its preview", isOn: $settings.keepOCRImage)
+            } header: {
+                Text("After reading")
+            } footer: {
+                Text("A text grab captures the selection in order to read it. Left off, that image "
+                     + "is discarded once the text has been taken from it — nothing is previewed "
+                     + "and no file is kept.")
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

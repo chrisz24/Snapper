@@ -191,6 +191,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             guard let self else { return }
             self.lastCapture = result
             self.ocr.recognize(result, keepImage: true)
+
+            // A text grab captures pixels only so they can be read, and reading works from the
+            // image already in memory rather than from the file. With no preview offered there is
+            // nothing left that could use it, so it goes now instead of sitting in scratch for a
+            // week — asking for text should not quietly produce a screenshot.
+            //
+            // Only ever the scratch file from this grab: the quick action that reads text from a
+            // capture the user *did* take goes through a different path, and deleting that one
+            // would destroy their screenshot.
+            if !self.settings.keepOCRImage, result.isTemporary {
+                try? FileManager.default.removeItem(at: result.fileURL)
+            }
         }
 
         coordinator.onError = { message in
