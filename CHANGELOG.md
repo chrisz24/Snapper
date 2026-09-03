@@ -11,6 +11,12 @@ publishing and uses it as the release notes, so what is written here is what peo
   once the text has been taken rather than waiting a week to be cleaned up — recognition works from
   the image in memory, so nothing needed it. **Settings → Text → After reading** turns the preview
   back on for anyone who wants both.
+- **Uninstalling no longer deletes your signing credentials.** It removed the app's whole Application
+  Support folder, which is also where the Developer ID private keys and the signing keychains'
+  passwords live on a machine with no Xcode. The passwords are randomly generated and stored nowhere
+  else, so this could not be undone — the certificates had to be re-issued by Apple. The folder is
+  now emptied rather than removed, keeping those two directories, and the uninstall says so. Nobody
+  but a developer of Snapper itself has them, so an ordinary uninstall still leaves nothing behind.
 
 ## 0.1.5
 
