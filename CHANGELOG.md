@@ -3,6 +3,15 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.6
+
+- **A text grab no longer produces a screenshot.** ⇧⌘O read the text and then left the captured
+  image in the corner with its quick actions, which is a surprise when what you asked for was text.
+  The image is no longer kept or previewed by default, and the file it was read from is discarded
+  once the text has been taken rather than waiting a week to be cleaned up — recognition works from
+  the image in memory, so nothing needed it. **Settings → Text → After reading** turns the preview
+  back on for anyone who wants both.
+
 ## 0.1.5
 
 - **Reopening after an update now works wherever the app is kept.** 0.1.4 watched the running copy's
