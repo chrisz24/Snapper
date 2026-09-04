@@ -4,6 +4,9 @@ import AppKit
 
 public enum MarkupTool: String, CaseIterable, Identifiable, Sendable {
     case arrow, rectangle, ellipse, line, freehand, highlight, redact, text, crop
+    /// Places the shape you last drew, by clicking rather than dragging. Not a shape itself — it
+    /// stands in for one, so what it commits is always a real arrow, box, ellipse and so on.
+    case place
 
     public var id: String { rawValue }
 
@@ -18,6 +21,7 @@ public enum MarkupTool: String, CaseIterable, Identifiable, Sendable {
         case .redact: "Redact"
         case .text: "Text"
         case .crop: "Crop"
+        case .place: "Place"
         }
     }
 
@@ -32,11 +36,30 @@ public enum MarkupTool: String, CaseIterable, Identifiable, Sendable {
         case .redact: "eye.slash"
         case .text: "textformat"
         case .crop: "crop"
+        case .place: "cursorarrow.click"
         }
     }
 
     /// Tools defined by a start and end point rather than a free path.
     var isDragDefined: Bool { self != .freehand && self != .text }
+
+    /// True for the stand-in tool, which draws whatever shape was last used rather than one of its
+    /// own. Nothing is ever committed as `.place`; it resolves to a real shape first.
+    public var placesLastShape: Bool { self == .place }
+
+    /// "an arrow", "a rectangle" — so the interface can name a shape mid-sentence without a
+    /// hand-written special case per tool.
+    public var titleWithArticle: String {
+        let name = title.lowercased()
+        let article = "aeiou".contains(name.first ?? "x") ? "an" : "a"
+        return "\(article) \(name)"
+    }
+
+    /// The shapes `.place` is allowed to stand in for — the ones defined by two points, which is
+    /// what clicking a start and an end can express.
+    public static var placeableShapes: [MarkupTool] {
+        allCases.filter { $0.supportsClickAnchor && !$0.placesLastShape }
+    }
 
     /// Tools that can be placed by clicking a start point and then clicking an end point, instead
     /// of holding the button down. Crop is excluded on purpose: its preview and its committed value
@@ -121,6 +144,8 @@ public final class MarkupModel: ObservableObject {
     @Published public var lineWidth: CGFloat = 4
     @Published public var inProgress: MarkupElement?
     @Published public var cropRect: CGRect?
+    /// The shape `.place` stands in for: whatever was last drawn with a real shape tool.
+    @Published public var lastShape: MarkupTool = .arrow
     /// Where a click-placed shape starts, while it waits for the click that finishes it.
     @Published public var anchor: CGPoint?
     /// Set while a text element is being typed.
@@ -147,6 +172,13 @@ public final class MarkupModel: ObservableObject {
         CGSize(width: base.width, height: base.height)
     }
 
+    /// The shape actually being drawn. `.place` is a stand-in and resolves to `lastShape`; every
+    /// other tool is itself. Everything that draws or commits goes through this, so no element is
+    /// ever created carrying `.place`.
+    public var effectiveTool: MarkupTool {
+        tool.placesLastShape ? lastShape : tool
+    }
+
     /// Anything worth carrying back to the capture.
     public var hasEdits: Bool { !elements.isEmpty || cropRect != nil }
 
@@ -154,15 +186,16 @@ public final class MarkupModel: ObservableObject {
     /// an arrow's tail exactly without holding the button down. Dragging still works as before.
     public func handleClick(at point: CGPoint) {
         guard tool.supportsClickAnchor else { return }
+        let shape = effectiveTool
 
         guard let start = anchor else {
             anchor = point
-            inProgress = MarkupElement(tool: tool, points: [point, point],
+            inProgress = MarkupElement(tool: shape, points: [point, point],
                                        color: color, lineWidth: lineWidth)
             return
         }
 
-        let element = MarkupElement(tool: tool, points: [start, point],
+        let element = MarkupElement(tool: shape, points: [start, point],
                                     color: color, lineWidth: lineWidth)
         guard element.rect.width >= 3 || element.rect.height >= 3 else {
             // Clicking the same spot again means "never mind", rather than committing a shape too
@@ -177,7 +210,7 @@ public final class MarkupModel: ObservableObject {
     /// Follows the pointer between the two clicks, so the shape is previewed before it is placed.
     public func moveAnchoredEnd(to point: CGPoint) {
         guard let anchor, tool.supportsClickAnchor else { return }
-        inProgress = MarkupElement(tool: tool, points: [anchor, point],
+        inProgress = MarkupElement(tool: effectiveTool, points: [anchor, point],
                                    color: color, lineWidth: lineWidth)
     }
 
@@ -207,6 +240,11 @@ public final class MarkupModel: ObservableObject {
         pushUndo()
         elements.append(element)
         inProgress = nil
+        // Recorded from the element rather than from `tool`, so a shape drawn *through* `.place`
+        // keeps the memory pointing at a real shape instead of at the stand-in.
+        if MarkupTool.placeableShapes.contains(element.tool) {
+            lastShape = element.tool
+        }
     }
 
     public func setCrop(_ rect: CGRect?) {

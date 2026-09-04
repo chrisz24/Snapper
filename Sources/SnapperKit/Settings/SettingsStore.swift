@@ -69,6 +69,9 @@ public final class SettingsStore: ObservableObject {
     /// resetting to the arrow every time. Not shown in Settings; it is remembered state, not a
     /// preference to be set.
     @Published public var lastMarkupTool: String = MarkupTool.arrow.rawValue { didSet { persist(lastMarkupTool, .lastMarkupTool) } }
+    /// The shape the Place tool stands in for. Kept apart from `lastMarkupTool`: leaving markup with
+    /// Place selected must reopen on Place, and Place still has to know which shape it draws.
+    @Published public var lastMarkupShape: String = MarkupTool.arrow.rawValue { didSet { persist(lastMarkupShape, .lastMarkupShape) } }
     @Published public var historyEnabled: Bool = true { didSet { persist(historyEnabled, .historyEnabled) } }
     @Published public var historyLimit: Int = 50 { didSet { persist(historyLimit, .historyLimit) } }
 
@@ -111,7 +114,7 @@ public final class SettingsStore: ObservableObject {
         case quickActionActivation, releaseOnAppSwitch
         case historyEnabled, historyLimit
         case automaticUpdateChecks, includePrereleaseUpdates, lastUpdateCheck, skippedUpdateVersion
-        case lastMarkupTool
+        case lastMarkupTool, lastMarkupShape
     }
 
     private func persist(_ value: Any, _ key: Key) {
@@ -172,6 +175,7 @@ public final class SettingsStore: ObservableObject {
         releaseOnAppSwitch = bool(.releaseOnAppSwitch, true)
 
         lastMarkupTool = string(.lastMarkupTool, MarkupTool.arrow.rawValue)
+        lastMarkupShape = string(.lastMarkupShape, MarkupTool.arrow.rawValue)
         historyEnabled = bool(.historyEnabled, true)
         historyLimit = int(.historyLimit, 50)
 

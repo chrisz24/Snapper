@@ -23,11 +23,21 @@ public final class MarkupWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
+    /// The live editor window. Exposed for `--markup-demo`, the only way to look at this window
+    /// without first taking a real capture.
+    public var debugWindow: NSWindow? { window }
+
+    /// The live editor's model, so `--markup-demo --samples` can seed annotations.
+    public var debugModel: MarkupModel? { session?.model }
+
     public func open(_ result: CaptureResult) {
         close()
 
         let model = MarkupModel(base: result.image, scale: result.scale)
-        // Pick up where the last session left off.
+        // Pick up where the last session left off. The shape is restored before the tool, so a
+        // session reopening on Place already knows what Place draws.
+        model.lastShape = MarkupTool(rawValue: settings.lastMarkupShape)
+            .flatMap { MarkupTool.placeableShapes.contains($0) ? $0 : nil } ?? .arrow
         model.tool = MarkupTool(rawValue: settings.lastMarkupTool) ?? .arrow
         session = (model, result)
         let view = MarkupView(
@@ -74,6 +84,7 @@ public final class MarkupWindowController: NSObject, NSWindowDelegate {
         guard let (model, result) = session else { return }
         session = nil
         settings.lastMarkupTool = model.tool.rawValue
+        settings.lastMarkupShape = model.lastShape.rawValue
 
         guard model.hasEdits, let edited = model.flattened() else { return }
 

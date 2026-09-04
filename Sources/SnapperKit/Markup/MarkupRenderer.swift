@@ -128,24 +128,54 @@ public enum MarkupRenderer {
 
         case .redact, .crop:
             break // handled elsewhere
+
+        case .place:
+            // Never reaches here: `.place` resolves to a real shape before anything is committed,
+            // so an element carrying it would be a bug rather than something to draw.
+            break
         }
     }
 
+    /// A tapered arrow: nearly a point at the tail, thickening towards the head.
+    ///
+    /// The shaft is filled rather than stroked, because a stroke has one width along its whole
+    /// length and cannot taper. Shaft and head are filled as two separate paths on purpose: in a
+    /// single path their subpaths wind in opposite directions where they overlap, and the non-zero
+    /// winding rule then cancels that region out, leaving a white notch across the arrow at larger
+    /// line widths. Two fills of the same colour simply paint over each other.
     private static func drawArrow(from start: CGPoint, to end: CGPoint, in context: CGContext, lineWidth: CGFloat, color: CGColor) {
         let angle = atan2(end.y - start.y, end.x - start.x)
         let headLength = max(12, lineWidth * 4)
         let headAngle = CGFloat.pi / 7
 
-        // Stop the shaft short so it does not poke through the head.
+        // Across the shaft, not along it.
+        let normal = angle + .pi / 2
+        let tailHalf = max(0.4, lineWidth * 0.16)
+        let baseHalf = max(1.2, lineWidth * 0.62)
+
+        // Where the shaft meets the head, pulled back so the two never leave a notch.
         let shaftEnd = CGPoint(
             x: end.x - cos(angle) * headLength * 0.62,
             y: end.y - sin(angle) * headLength * 0.62
         )
-        context.move(to: start)
-        context.addLine(to: shaftEnd)
-        context.strokePath()
+
+        func offset(_ point: CGPoint, by distance: CGFloat) -> CGPoint {
+            CGPoint(x: point.x + cos(normal) * distance, y: point.y + sin(normal) * distance)
+        }
 
         context.setFillColor(color)
+
+        // The shaft, as a wedge from tail to head base.
+        context.beginPath()
+        context.move(to: offset(start, by: tailHalf))
+        context.addLine(to: offset(shaftEnd, by: baseHalf))
+        context.addLine(to: offset(shaftEnd, by: -baseHalf))
+        context.addLine(to: offset(start, by: -tailHalf))
+        context.closePath()
+        context.fillPath()
+
+        // The head, filled separately — see above.
+        context.beginPath()
         context.move(to: end)
         context.addLine(to: CGPoint(
             x: end.x - headLength * cos(angle - headAngle),

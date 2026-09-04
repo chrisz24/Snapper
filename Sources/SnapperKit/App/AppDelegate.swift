@@ -66,6 +66,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate 
             Task { exit(await SettingsDemo.run(settings: settings, bindings: bindings, tab: tab, seconds: seconds)) }
             return
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--markup-demo") {
+            let seconds = CommandLine.arguments.count > i + 1
+                ? Double(CommandLine.arguments[i + 1]) ?? 8 : 8
+            let tool = CommandLine.arguments.firstIndex(of: "--tool")
+                .flatMap { CommandLine.arguments.count > $0 + 1 ? CommandLine.arguments[$0 + 1] : nil }
+                .flatMap { MarkupTool(rawValue: $0) } ?? .arrow
+            Task { exit(await MarkupDemo.run(seconds: seconds, tool: tool)) }
+            return
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--preview-demo") {
             let seconds = CommandLine.arguments.count > i + 1
                 ? Double(CommandLine.arguments[i + 1]) ?? 6 : 6

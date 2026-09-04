@@ -17,6 +17,35 @@ enum MarkupTests {
         return context.makeImage()
     }
 
+    /// A plain white bitmap, so red annotation pixels stand out unambiguously.
+    private static func makeWhiteImage(width: Int, height: Int) -> CGImage? {
+        guard let context = CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    /// One pixel out of a rendered image, as (r, g, b). Nil if it could not be read.
+    private static func pixel(_ image: CGImage, x: Int, y: Int) -> (Int, Int, Int)? {
+        let width = image.width, height = image.height
+        guard x >= 0, y >= 0, x < width, y < height else { return nil }
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &buffer, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let offset = (y * width + x) * 4
+        return (Int(buffer[offset]), Int(buffer[offset + 1]), Int(buffer[offset + 2]))
+    }
+
     static func run() {
         Harness.suite("Markup") {
             Harness.test("a rect is normalised however the drag was made") {
@@ -94,6 +123,56 @@ enum MarkupTests {
                 Harness.expect(pixelated != nil, "pixelate returned nil")
                 Harness.expectEqual(pixelated?.width, 200)
                 Harness.expectEqual(pixelated?.height, 120)
+            }
+
+            Harness.test("a thick arrow has no hole where the shaft meets the head") {
+                // The shaft and the head overlap. Filled as one path, their subpaths wind in
+                // opposite directions there and the non-zero rule cancels the overlap out, leaving
+                // a white notch straight across the arrow — visible at large line widths only,
+                // which is exactly how it shipped unnoticed.
+                //
+                // A 100px-tall image with the arrow at y=50 is unaffected by the context's vertical
+                // flip, so the sample points hold whichever way up it is drawn.
+                guard let white = makeWhiteImage(width: 200, height: 100) else { return }
+                let arrow = MarkupElement(
+                    tool: .arrow,
+                    points: [CGPoint(x: 20, y: 50), CGPoint(x: 180, y: 50)],
+                    color: .red, lineWidth: 14)
+                guard let output = MarkupRenderer.render(
+                    base: white, elements: [arrow], inProgress: nil,
+                    cropRect: nil, pixelated: nil) else {
+                    Harness.expect(false, "nothing rendered")
+                    return
+                }
+                // headLength = max(12, 14 * 4) = 56; the join sits 0.62 of that back from the tip.
+                for x in [143, 146, 150] {
+                    guard let (r, g, b) = pixel(output, x: x, y: 50) else { continue }
+                    Harness.expect(!(r > 240 && g > 240 && b > 240),
+                                   "white gap at x=\(x): rgb(\(r), \(g), \(b))")
+                }
+            }
+
+            Harness.test("an arrow is thinner at the tail than at the head") {
+                // The taper itself: sample near the tail and near the head base.
+                guard let white = makeWhiteImage(width: 200, height: 100) else { return }
+                let arrow = MarkupElement(
+                    tool: .arrow,
+                    points: [CGPoint(x: 20, y: 50), CGPoint(x: 180, y: 50)],
+                    color: .red, lineWidth: 14)
+                guard let output = MarkupRenderer.render(
+                    base: white, elements: [arrow], inProgress: nil,
+                    cropRect: nil, pixelated: nil) else { return }
+
+                func thickness(atX x: Int) -> Int {
+                    (0..<100).filter { y in
+                        guard let (r, g, b) = pixel(output, x: x, y: y) else { return false }
+                        return !(r > 240 && g > 240 && b > 240)
+                    }.count
+                }
+                let tail = thickness(atX: 25)
+                let base = thickness(atX: 140)
+                Harness.expect(tail < base, "tail \(tail)px is not thinner than the head end \(base)px")
+                Harness.expect(tail >= 1, "the tail vanished entirely")
             }
 
             Harness.test("in-progress elements are drawn alongside committed ones") {
@@ -188,6 +267,54 @@ enum MarkupTests {
                 // would look exactly like a real one.
                 Harness.expect(!MarkupTool.crop.supportsClickAnchor)
                 Harness.expect(MarkupTool.arrow.supportsClickAnchor)
+            }
+
+            Harness.test("Place draws the shape last used, never itself") {
+                MainActor.assumeIsolated {
+                    let m = model(.rectangle)
+                    m.handleClick(at: CGPoint(x: 10, y: 10))
+                    m.handleClick(at: CGPoint(x: 70, y: 50))          // a rectangle is now the last shape
+                    m.tool = .place
+                    m.handleClick(at: CGPoint(x: 100, y: 20))
+                    m.handleClick(at: CGPoint(x: 150, y: 90))
+                    Harness.expectEqual(m.elements.count, 2)
+                    // The invariant: an element carrying `.place` would be undrawable.
+                    Harness.expect(!m.elements.contains { $0.tool == .place },
+                                   "committed the stand-in instead of a real shape")
+                    Harness.expectEqual(m.elements.last?.tool, .rectangle)
+                }
+            }
+
+            Harness.test("Place follows the shape you switch to") {
+                MainActor.assumeIsolated {
+                    let m = model(.place)
+                    Harness.expectEqual(m.effectiveTool, .arrow, "should start on the arrow")
+                    m.tool = .ellipse
+                    m.handleClick(at: CGPoint(x: 10, y: 10))
+                    m.handleClick(at: CGPoint(x: 60, y: 60))
+                    m.tool = .place
+                    Harness.expectEqual(m.effectiveTool, .ellipse, "did not remember the ellipse")
+                }
+            }
+
+            Harness.test("shape names read correctly mid-sentence") {
+                Harness.expectEqual(MarkupTool.arrow.titleWithArticle, "an arrow")
+                Harness.expectEqual(MarkupTool.ellipse.titleWithArticle, "an ellipse")
+                Harness.expectEqual(MarkupTool.rectangle.titleWithArticle, "a rectangle")
+                Harness.expectEqual(MarkupTool.line.titleWithArticle, "a line")
+            }
+
+            Harness.test("Place is offered for two-point shapes only") {
+                for shape in MarkupTool.placeableShapes {
+                    Harness.expect(shape.supportsClickAnchor, "\(shape.rawValue) cannot be clicked")
+                    Harness.expect(!shape.placesLastShape, "the stand-in stands in for itself")
+                }
+                // Freehand needs a path, text needs typing, crop shares state with its preview.
+                for excluded in [MarkupTool.freehand, .text, .crop] {
+                    Harness.expect(!MarkupTool.placeableShapes.contains(excluded),
+                                   "\(excluded.rawValue) should not be placeable")
+                }
+                Harness.expect(MarkupTool.allCases.contains(.place), "not in the palette")
             }
 
             Harness.test("an untouched image reports nothing to carry back") {

@@ -39,7 +39,9 @@ struct MarkupView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .help(tool.title)
+                .help(tool.placesLastShape
+                      ? "Place — clicks down \(model.lastShape.title.lowercased()) shapes, the last kind you drew"
+                      : tool.title)
             }
 
             Divider().frame(height: 18)
@@ -174,10 +176,12 @@ struct MarkupView: View {
             .onChanged { value in
                 guard model.tool != .text else { return }
                 model.cancelAnchor()
+                // `.place` is a stand-in, so everything below works on the resolved shape.
+                let shape = model.effectiveTool
                 let start = imagePoint(from: value.startLocation, fitted: fitted)
                 let current = imagePoint(from: value.location, fitted: fitted)
 
-                if model.tool == .crop {
+                if shape == .crop {
                     model.cropRect = CGRect(
                         x: min(start.x, current.x), y: min(start.y, current.y),
                         width: abs(current.x - start.x), height: abs(current.y - start.y)
@@ -185,7 +189,7 @@ struct MarkupView: View {
                     return
                 }
 
-                if model.tool == .freehand {
+                if shape == .freehand {
                     var points = model.inProgress?.points ?? [start]
                     points.append(current)
                     model.inProgress = MarkupElement(
@@ -194,13 +198,13 @@ struct MarkupView: View {
                     )
                 } else {
                     model.inProgress = MarkupElement(
-                        tool: model.tool, points: [start, current],
+                        tool: shape, points: [start, current],
                         color: model.color, lineWidth: model.lineWidth
                     )
                 }
             }
             .onEnded { _ in
-                if model.tool == .crop {
+                if model.effectiveTool == .crop {
                     if let rect = model.cropRect, rect.width > 4, rect.height > 4 {
                         model.setCrop(rect)
                     } else {
@@ -232,9 +236,13 @@ struct MarkupView: View {
             // Click-to-place is not a gesture anyone guesses at, so it is spelled out — and once a
             // shape is armed, the way out of it is worth stating too.
             if model.anchor != nil {
-                Text("Click again to finish the \(model.tool.title.lowercased()), or click the same spot to cancel")
+                Text("Click again to finish the \(model.effectiveTool.title.lowercased()), or click the same spot to cancel")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if model.tool.placesLastShape {
+                Text("Click to place \(model.lastShape.titleWithArticle) — the last shape you drew")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             } else if model.tool.supportsClickAnchor {
                 Text("Drag, or click once to place the start point")
                     .font(.caption)
