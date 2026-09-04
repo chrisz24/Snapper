@@ -3,6 +3,14 @@
 Notable changes per release. `scripts/release.sh` reads the section matching the version it is
 publishing and uses it as the release notes, so what is written here is what people see on GitHub.
 
+## 0.1.7
+
+- **A Place tool in the markup palette.** Select it and a click puts down whatever shape you last
+  drew — the first click is where the shape starts, the second finishes it, so an arrow's tail lands
+  exactly where you put it. The tooltip and the footer name the shape it will place.
+- **Arrows taper**, from nearly a point at the tail to full width at the head, instead of being a
+  line of one thickness with a triangle stuck on the end.
+
 ## 0.1.6
 
 - **A text grab no longer produces a screenshot.** ⇧⌘O read the text and then left the captured
